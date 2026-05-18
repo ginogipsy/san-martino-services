@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: saga-orchestrator
+  datasource:
+    url: ${SAGA_DB_URL:jdbc:postgresql://localhost:5435/saga}
+    username: ${SAGA_DB_USER:saga}
+    password: ${SAGA_DB_PASSWORD:saga}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+server:
+  port: ${SAGA_PORT:8083}
+
+clients:
+  events-base-url: ${EVENTS_URL:http://localhost:8081}
+  stands-base-url: ${STANDS_URL:http://localhost:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    root: INFO
+    com.ginogipsy.sanmartino: DEBUG

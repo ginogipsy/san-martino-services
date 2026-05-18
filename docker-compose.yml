@@ -1,0 +1,61 @@
+services:
+  postgres-events:
+    image: postgres:17-alpine
+    container_name: sanmartino-postgres-events
+    environment:
+      POSTGRES_DB: events
+      POSTGRES_USER: events
+      POSTGRES_PASSWORD: events
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-events-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U events -d events"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-stands:
+    image: postgres:17-alpine
+    container_name: sanmartino-postgres-stands
+    environment:
+      POSTGRES_DB: stands
+      POSTGRES_USER: stands
+      POSTGRES_PASSWORD: stands
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres-stands-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stands -d stands"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-saga:
+    image: postgres:17-alpine
+    container_name: sanmartino-postgres-saga
+    environment:
+      POSTGRES_DB: saga
+      POSTGRES_USER: saga
+      POSTGRES_PASSWORD: saga
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres-saga-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saga -d saga"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Verranno aggiunti progressivamente:
+  # kafka, zookeeper o kafka-kraft
+  # keycloak (gia' in san-martino-keycloak/)
+  # grafana, loki, prometheus, tempo
+
+volumes:
+  postgres-events-data:
+  postgres-stands-data:
+  postgres-saga-data:

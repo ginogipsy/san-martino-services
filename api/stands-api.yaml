@@ -1,0 +1,506 @@
+openapi: 3.0.3
+info:
+  title: San Martino — Stands API
+  description: |
+    Gestione delle cantine (stand di cibo e bevande) della festa "Le cantine di
+    San Martino" (Arce, FR). Ogni cantina ha proprietari e un menu (cibo + bevande).
+  version: 1.0.0
+  contact:
+    name: viviAMOarce
+servers:
+  - url: http://localhost:8082
+    description: Local dev
+
+tags:
+  - name: stands
+    description: Cantine
+  - name: menu
+    description: Menu items (cibo + bevande) di una cantina
+  - name: owners
+    description: Proprietari di una cantina
+
+paths:
+  /v1/stands:
+    get:
+      tags: [stands]
+      summary: Elenca tutte le cantine (versione summary)
+      operationId: listStands
+      responses:
+        '200':
+          description: Lista di cantine (summary, senza owners/menu)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StandSummary'
+    post:
+      tags: [stands]
+      summary: Crea una nuova cantina
+      operationId: createStand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandCreate'
+      responses:
+        '201':
+          description: Cantina creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/stands/{id}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    get:
+      tags: [stands]
+      summary: Dettaglio di una cantina (include owners e menu)
+      operationId: getStand
+      responses:
+        '200':
+          description: Cantina trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [stands]
+      summary: Aggiorna info base di una cantina
+      operationId: updateStand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandUpdate'
+      responses:
+        '200':
+          description: Cantina aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags: [stands]
+      summary: Elimina una cantina (cascade su owners e menu)
+      operationId: deleteStand
+      responses:
+        '204':
+          description: Eliminata
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/menu-items:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    get:
+      tags: [menu]
+      summary: Lista del menu di una cantina
+      operationId: listMenuItems
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/MenuKind'
+      responses:
+        '200':
+          description: Menu della cantina (filtrato per kind se passato)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [menu]
+      summary: Aggiunge un piatto o bevanda al menu
+      operationId: addMenuItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemCreate'
+      responses:
+        '201':
+          description: Item aggiunto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/menu-items/{itemId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: itemId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [menu]
+      summary: Aggiorna un item del menu (incluso il conteggio piatti disponibili)
+      operationId: updateMenuItem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuItemUpdate'
+      responses:
+        '200':
+          description: Item aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [menu]
+      summary: Rimuovi un item dal menu
+      operationId: deleteMenuItem
+      responses:
+        '204':
+          description: Rimosso
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/owners:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    get:
+      tags: [owners]
+      summary: Lista proprietari della cantina
+      operationId: listOwners
+      responses:
+        '200':
+          description: Proprietari
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Owner'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [owners]
+      summary: Aggiungi un proprietario alla cantina
+      operationId: addOwner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnerCreate'
+      responses:
+        '201':
+          description: Proprietario aggiunto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Owner'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/owners/{ownerId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: ownerId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [owners]
+      summary: Rimuovi un proprietario
+      operationId: deleteOwner
+      responses:
+        '204':
+          description: Rimosso
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    StandId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    MenuKind:
+      type: string
+      enum: [FOOD, DRINK]
+
+    OwnerRole:
+      type: string
+      enum: [PRIMARY, SECONDARY]
+
+    LocalizedText:
+      type: object
+      required: [it, en]
+      properties:
+        it:
+          type: string
+        en:
+          type: string
+
+    StandSummary:
+      type: object
+      required: [id, number, name, description, firstParticipationYear, latitude, longitude]
+      properties:
+        id:
+          type: string
+          format: uuid
+        number:
+          type: integer
+          description: Numero della cantina come stampato sui volantini (es. 1..58)
+        name:
+          type: string
+          example: "Il tartufo del Tobia"
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        firstParticipationYear:
+          type: integer
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    StandDetail:
+      allOf:
+        - $ref: '#/components/schemas/StandSummary'
+        - type: object
+          required: [owners, menuItems]
+          properties:
+            owners:
+              type: array
+              items:
+                $ref: '#/components/schemas/Owner'
+            menuItems:
+              type: array
+              items:
+                $ref: '#/components/schemas/MenuItem'
+
+    StandCreate:
+      type: object
+      required: [number, name, description, firstParticipationYear, latitude, longitude]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 999
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        firstParticipationYear:
+          type: integer
+          minimum: 1900
+          maximum: 2200
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    StandUpdate:
+      type: object
+      required: [number, name, description, firstParticipationYear, latitude, longitude]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+          maximum: 999
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        firstParticipationYear:
+          type: integer
+          minimum: 1900
+          maximum: 2200
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+
+    MenuItem:
+      type: object
+      required: [id, standId, name, description, availablePlates, kind, keywords]
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        availablePlates:
+          type: integer
+          minimum: 0
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        keywords:
+          type: array
+          description: Parole chiave per search server-side (futura)
+          items:
+            type: string
+
+    MenuItemCreate:
+      type: object
+      required: [name, description, availablePlates, kind]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        availablePlates:
+          type: integer
+          minimum: 0
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        keywords:
+          type: array
+          items:
+            type: string
+
+    MenuItemUpdate:
+      type: object
+      required: [name, description, availablePlates, kind]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        availablePlates:
+          type: integer
+          minimum: 0
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        keywords:
+          type: array
+          items:
+            type: string
+
+    Owner:
+      type: object
+      required: [id, standId, firstName, lastName, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/OwnerRole'
+
+    OwnerCreate:
+      type: object
+      required: [firstName, lastName, role]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        lastName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        email:
+          type: string
+        phone:
+          type: string
+        role:
+          $ref: '#/components/schemas/OwnerRole'
+
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+
+  responses:
+    NotFound:
+      description: Risorsa non trovata
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BadRequest:
+      description: Richiesta non valida
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

@@ -1,0 +1,233 @@
+openapi: 3.0.3
+info:
+  title: San Martino — Events API
+  description: |
+    Gestione delle edizioni della festa "Le cantine di San Martino" (Arce, FR).
+    Un Event rappresenta una singola edizione (es. "San Martino 2026").
+  version: 1.0.0
+  contact:
+    name: viviAMOarce
+servers:
+  - url: http://localhost:8081
+    description: Local dev
+  - url: https://api.sanmartino.example.org
+    description: Production (TBD)
+
+tags:
+  - name: events
+    description: Edizioni della festa
+
+paths:
+  /v1/events:
+    get:
+      tags: [events]
+      summary: Elenca tutte le edizioni
+      operationId: listEvents
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EventStatus'
+          description: Filtra per stato (UPCOMING, PAST). Se omesso, ritorna tutto.
+      responses:
+        '200':
+          description: Lista degli eventi
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+    post:
+      tags: [events]
+      summary: Crea una nuova edizione
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+      responses:
+        '201':
+          description: Edizione creata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/events/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [events]
+      summary: Dettaglio di un'edizione
+      operationId: getEvent
+      responses:
+        '200':
+          description: Edizione trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [events]
+      summary: Aggiorna un'edizione esistente
+      operationId: updateEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdate'
+      responses:
+        '200':
+          description: Edizione aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    delete:
+      tags: [events]
+      summary: Elimina un'edizione
+      operationId: deleteEvent
+      responses:
+        '204':
+          description: Eliminato
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    EventStatus:
+      type: string
+      enum: [UPCOMING, PAST]
+
+    LocalizedText:
+      type: object
+      required: [it, en]
+      properties:
+        it:
+          type: string
+          example: "Edizione 2026 della festa di San Martino..."
+        en:
+          type: string
+          example: "2026 edition of the San Martino festival..."
+
+    Event:
+      type: object
+      required: [id, name, place, startDate, endDate, description, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Le cantine di San Martino 2026"
+        place:
+          type: string
+          example: "Arce (FR) — centro storico"
+        startDate:
+          type: string
+          format: date
+          example: "2026-11-14"
+        endDate:
+          type: string
+          format: date
+          example: "2026-11-15"
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+        status:
+          $ref: '#/components/schemas/EventStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    EventCreate:
+      type: object
+      required: [name, place, startDate, endDate, description]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        place:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+
+    EventUpdate:
+      type: object
+      required: [name, place, startDate, endDate, description]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        place:
+          type: string
+          minLength: 1
+          maxLength: 200
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+
+    Problem:
+      type: object
+      description: RFC 7807 Problem Details
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+
+  responses:
+    NotFound:
+      description: Risorsa non trovata
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    BadRequest:
+      description: Richiesta non valida
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

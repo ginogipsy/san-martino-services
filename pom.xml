@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.0.6</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.ginogipsy.sanmartino</groupId>
+    <artifactId>san-martino-services</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>San Martino — services</name>
+    <description>Backend monorepo for the "Le cantine di San Martino" festival app (Arce, FR).</description>
+
+    <modules>
+        <module>events-service</module>
+        <module>stands-service</module>
+        <module>gateway</module>
+        <module>saga-orchestrator</module>
+        <!-- notifications-service: arriva nel prossimo step -->
+    </modules>
+
+    <properties>
+        <java.version>26</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Plugin versions -->
+        <openapi-generator.version>7.10.0</openapi-generator.version>
+        <jackson-databind-nullable.version>0.2.6</jackson-databind-nullable.version>
+        <testcontainers.version>1.20.4</testcontainers.version>
+        <spring-cloud.version>2025.1.1</spring-cloud.version>
+
+        <!-- Docker image config (Buildpacks) -->
+        <docker.image.registry>ghcr.io</docker.image.registry>
+        <docker.image.owner>ginogipsy</docker.image.owner>
+        <docker.image.prefix>${docker.image.registry}/${docker.image.owner}/sanmartino</docker.image.prefix>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.openapitools</groupId>
+                <artifactId>jackson-databind-nullable</artifactId>
+                <version>${jackson-databind-nullable.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.openapitools</groupId>
+                    <artifactId>openapi-generator-maven-plugin</artifactId>
+                    <version>${openapi-generator.version}</version>
+                    <!-- Each module declares its own execution with input spec + package config -->
+                </plugin>
+
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <configuration>
+                        <image>
+                            <!-- Each child overrides imageName to its own service name -->
+                            <publish>false</publish>
+                            <env>
+                                <BP_JVM_VERSION>${java.version}</BP_JVM_VERSION>
+                            </env>
+                        </image>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+</project>
