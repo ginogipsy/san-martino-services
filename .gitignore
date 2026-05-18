@@ -1,0 +1,16 @@
+target/
+.idea/
+*.iml
+.vscode/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OpenAPI generated sources (we regenerate at build)
+**/generated-sources/openapi/
+
+# Build artifacts
+build/
+out/
