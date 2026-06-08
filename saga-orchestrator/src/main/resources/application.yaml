@@ -25,6 +25,19 @@ clients:
   events-base-url: ${EVENTS_URL:http://localhost:8081}
   stands-base-url: ${STANDS_URL:http://localhost:8082}
 
+sanmartino:
+  kafka:
+    topics:
+      saga-events: sanmartino.saga.events
+
+spring.kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+  producer:
+    key-serializer: org.apache.kafka.common.serialization.StringSerializer
+    value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    properties:
+      spring.json.add.type.headers: false
+
 management:
   endpoints:
     web:

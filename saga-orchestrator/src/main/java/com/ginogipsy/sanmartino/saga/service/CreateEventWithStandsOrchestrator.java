@@ -8,10 +8,14 @@ import com.ginogipsy.sanmartino.saga.domain.SagaRepository;
 import com.ginogipsy.sanmartino.saga.domain.SagaStatus;
 import com.ginogipsy.sanmartino.saga.domain.SagaStepEntity;
 import com.ginogipsy.sanmartino.saga.domain.SagaStepStatus;
+import com.ginogipsy.sanmartino.saga.event.SagaEvent;
+import com.ginogipsy.sanmartino.saga.event.SagaEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -38,17 +42,20 @@ public class CreateEventWithStandsOrchestrator {
     private final SagaRepository sagaRepository;
     private final EventsApiClient eventsClient;
     private final StandsApiClient standsClient;
+    private final SagaEventPublisher publisher;
     private final Clock clock;
 
     public CreateEventWithStandsOrchestrator(
             SagaRepository sagaRepository,
             EventsApiClient eventsClient,
             StandsApiClient standsClient,
+            SagaEventPublisher publisher,
             Clock clock
     ) {
         this.sagaRepository = sagaRepository;
         this.eventsClient = eventsClient;
         this.standsClient = standsClient;
+        this.publisher = publisher;
         this.clock = clock;
     }
 
@@ -85,6 +92,10 @@ public class CreateEventWithStandsOrchestrator {
             saga.setMessage("createEvent failed: " + ex.getMessage());
             saga.setFinishedAt(Instant.now(clock));
             log.error("[saga {}] step1 createEvent FAILED: {}", saga.getId(), ex.getMessage());
+            publishAfterCommit(SagaEvent.compensated(
+                    saga.getId(), SAGA_TYPE, null,
+                    "createEvent failed: " + ex.getMessage(), Instant.now(clock)
+            ));
             return saga;
         }
 
@@ -100,6 +111,9 @@ public class CreateEventWithStandsOrchestrator {
         } catch (Exception ex) {
             failStep(step2, ex.getMessage());
             compensate(saga, eventId, ex.getMessage());
+            publishAfterCommit(SagaEvent.compensated(
+                    saga.getId(), SAGA_TYPE, eventId, ex.getMessage(), Instant.now(clock)
+            ));
             return saga;
         }
 
@@ -113,13 +127,33 @@ public class CreateEventWithStandsOrchestrator {
         } catch (Exception ex) {
             failStep(step3, ex.getMessage());
             compensate(saga, eventId, ex.getMessage());
+            publishAfterCommit(SagaEvent.compensated(
+                    saga.getId(), SAGA_TYPE, eventId, ex.getMessage(), Instant.now(clock)
+            ));
             return saga;
         }
 
         saga.setStatus(SagaStatus.COMPLETED);
         saga.setFinishedAt(Instant.now(clock));
         log.info("[saga {}] COMPLETED", saga.getId());
+        publishAfterCommit(SagaEvent.completed(
+                saga.getId(), SAGA_TYPE, eventId, req.standIds(), Instant.now(clock)
+        ));
         return saga;
+    }
+
+    private void publishAfterCommit(SagaEvent event) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publisher.publish(event);
+                }
+            });
+        } else {
+            // Fallback per chiamate fuori da una transazione (es. test)
+            publisher.publish(event);
+        }
     }
 
     private void compensate(SagaInstanceEntity saga, UUID eventIdToDelete, String rootCause) {
