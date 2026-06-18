@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: san-martino-keycloak
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # URL del tuo realm per validare i token in ingresso
+          issuer-uri: http://localhost:8080/realms/mio-realm
+          jwk-set-uri: http://localhost:8080/realms/mio-realm/protocol/openid-connect/certs
+
+# Parametri personalizzati per l'Admin Client
+keycloak:
+  server-url: http://localhost:8080
+  realm: mio-realm
+  client-id: admin-cli-wrapper # Un client con "Service Accounts Enabled" su Keycloak
+  client-secret: IL_TUO_SECRET

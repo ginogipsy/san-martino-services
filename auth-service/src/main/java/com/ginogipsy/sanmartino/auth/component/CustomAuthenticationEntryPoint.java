@@ -1,0 +1,29 @@
+package com.ginogipsy.sanmartino.auth.component;
+
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.NonNull;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+
+@Component
+public class CustomAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    @Override
+    public void commence(@NonNull HttpServletRequest request, HttpServletResponse response,
+                         @NonNull AuthenticationException authException) throws IOException {
+
+        response.setContentType("application/json");
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+
+        // Messaggio personalizzato per la UI
+        String json = String.format(
+                "{\"status\": 401, \"message\": \"Token scaduto o non valido\", \"timestamp\": %d}",
+                System.currentTimeMillis()
+        );
+        response.getWriter().write(json);
+    }
+}

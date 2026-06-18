@@ -26,6 +26,7 @@
         <module>gateway</module>
         <module>saga-orchestrator</module>
         <module>notifications-service</module>
+        <module>auth-service</module>
     </modules>
 
     <properties>

@@ -50,6 +50,45 @@ services:
       timeout: 5s
       retries: 10
 
+  # --- NUOVO: Database PostgreSQL dedicato a Keycloak ---
+  postgres-keycloak:
+    image: postgres:17-alpine
+    container_name: sanmartino-postgres-keycloak
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak_password
+    ports:
+      - "5436:5432" # Porta host incrementata (5436) per evitare conflitti esterni
+    volumes:
+      - postgres-keycloak-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- NUOVO: Servizio Keycloak basato su PostgreSQL ---
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: sanmartino-keycloak
+    command: start-dev
+    environment:
+      # Nuove variabili d'ambiente Keycloak (valide da Keycloak 24+) per l'utente amministratore iniziale
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+
+      # Configurazione Database per PostgreSQL
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak_password
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-keycloak:
+        condition: service_healthy # Keycloak parte solo quando PostgreSQL risponde effettivamente all'healthcheck
+
   kafka:
     image: apache/kafka:3.8.0
     container_name: sanmartino-kafka
@@ -77,10 +116,10 @@ services:
       retries: 10
 
   # Verranno aggiunti progressivamente:
-  # keycloak (gia' in san-martino-keycloak/)
   # grafana, loki, prometheus, tempo
 
 volumes:
   postgres-events-data:
   postgres-stands-data:
   postgres-saga-data:
+  postgres-keycloak-data: # Nuovo volume registrato
