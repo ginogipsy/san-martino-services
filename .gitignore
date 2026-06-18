@@ -16,3 +16,18 @@ build/
 out/
 /.claude/settings.local.json
 /.claude/scheduled_tasks.lock
+
+# Credentials / secrets — NEVER commit. .env.example is the only env file allowed.
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+*.pfx
+*.key
+**/firebase-service-account*.json
+**/firebase-adminsdk-*.json
+**/google-services.json
+**/service-account*.json
+**/secrets/
+**/credentials/

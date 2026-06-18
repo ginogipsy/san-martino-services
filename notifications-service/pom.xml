@@ -13,7 +13,11 @@
 
     <artifactId>notifications-service</artifactId>
     <name>notifications-service</name>
-    <description>Consumer Kafka degli eventi dominio; invia push notifications via FCM (stub per ora).</description>
+    <description>Consumer Kafka degli eventi dominio; invia push notifications via FCM.</description>
+
+    <properties>
+        <firebase-admin.version>9.4.1</firebase-admin.version>
+    </properties>
 
     <dependencies>
         <dependency>
@@ -42,14 +46,12 @@
             <artifactId>spring-boot-starter-kafka</artifactId>
         </dependency>
 
-        <!-- FCM Admin SDK: commentato finche' non avremo Firebase credentials.
-             Uncomment + add google-services credentials path when ready.
+        <!-- FCM Admin SDK: caricato solo quando sanmartino.fcm.enabled=true. -->
         <dependency>
             <groupId>com.google.firebase</groupId>
             <artifactId>firebase-admin</artifactId>
-            <version>9.4.1</version>
+            <version>${firebase-admin.version}</version>
         </dependency>
-        -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
