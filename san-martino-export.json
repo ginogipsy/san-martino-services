@@ -1,0 +1,17 @@
+{
+  "id": "san-martino",
+  "realm": "san-martino",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "admin-cli-wrapper",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "serviceAccountsEnabled": true,
+      "secret": "d457ab89-9283-4d14-b3ba-8f82a5a244f5",
+      "directAccessGrantsEnabled": true
+    }
+  ]
+}

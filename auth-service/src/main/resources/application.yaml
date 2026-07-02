@@ -1,17 +1,37 @@
 spring:
   application:
-    name: san-martino-keycloak
+    name: auth-service
   security:
     oauth2:
       resourceserver:
         jwt:
           # URL del tuo realm per validare i token in ingresso
-          issuer-uri: http://localhost:8080/realms/mio-realm
-          jwk-set-uri: http://localhost:8080/realms/mio-realm/protocol/openid-connect/certs
+          issuer-uri: http://localhost:9080/realms/san-martino
+          jwk-set-uri: http://localhost:9080/realms/san-martino/protocol/openid-connect/certs
 
 # Parametri personalizzati per l'Admin Client
 keycloak:
   server-url: http://localhost:8080
-  realm: mio-realm
+  realm: san-martino
   client-id: admin-cli-wrapper # Un client con "Service Accounts Enabled" su Keycloak
-  client-secret: IL_TUO_SECRET
+  client-secret: d457ab89-9283-4d14-b3ba-8f82a5a244f5
+
+server:
+  port: ${GATEWAY_PORT:8085}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    root: INFO
+    com.ginogipsy.sanmartino: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

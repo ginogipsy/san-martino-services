@@ -1,7 +1,7 @@
 services:
   postgres-events:
     image: postgres:17-alpine
-    container_name: sanmartino-postgres-events
+    container_name: san-martino-postgres-events
     environment:
       POSTGRES_DB: events
       POSTGRES_USER: events
@@ -18,7 +18,7 @@ services:
 
   postgres-stands:
     image: postgres:17-alpine
-    container_name: sanmartino-postgres-stands
+    container_name: san-martino-postgres-stands
     environment:
       POSTGRES_DB: stands
       POSTGRES_USER: stands
@@ -35,7 +35,7 @@ services:
 
   postgres-saga:
     image: postgres:17-alpine
-    container_name: sanmartino-postgres-saga
+    container_name: san-martino-postgres-saga
     environment:
       POSTGRES_DB: saga
       POSTGRES_USER: saga
@@ -53,7 +53,7 @@ services:
   # --- NUOVO: Database PostgreSQL dedicato a Keycloak ---
   postgres-keycloak:
     image: postgres:17-alpine
-    container_name: sanmartino-postgres-keycloak
+    container_name: san-martino-postgres-keycloak
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
@@ -71,8 +71,8 @@ services:
   # --- NUOVO: Servizio Keycloak basato su PostgreSQL ---
   keycloak:
     image: quay.io/keycloak/keycloak:latest
-    container_name: sanmartino-keycloak
-    command: start-dev
+    container_name: san-martino-keycloak
+    command: start-dev --import-realm
     environment:
       # Nuove variabili d'ambiente Keycloak (valide da Keycloak 24+) per l'utente amministratore iniziale
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -84,14 +84,17 @@ services:
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak_password
     ports:
-      - "8080:8080"
+      - "9080:8080"
+    volumes:
+      # Monta il file JSON nella cartella di importazione predefinita di Keycloak
+      - ./mio-realm-export.json:/opt/keycloak/data/import/realm.json
     depends_on:
       postgres-keycloak:
         condition: service_healthy # Keycloak parte solo quando PostgreSQL risponde effettivamente all'healthcheck
 
   kafka:
     image: apache/kafka:3.8.0
-    container_name: sanmartino-kafka
+    container_name: san-martino-kafka
     ports:
       - "9092:9092"
     environment:
@@ -108,12 +111,25 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
-      CLUSTER_ID: "sanmartino-cluster-1"
+      CLUSTER_ID: "san-martino-cluster-1"
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
+
+  vault:
+    image: hashicorp/vault:latest
+    container_name: san-martino-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: "my-root-token" # Il token master per fare login (usane uno semplice in locale)
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    cap_add:
+      - IPC_LOCK # Ottimizzazione Linux per impedire che i segreti finiscano nello swap su disco
+      - SYS_PTRACE # Ottimizzazione Linux per debuggare Vault
+      - SYS_ADMIN # Ottimizzazione Linux per debuggare Vault
 
   # Verranno aggiunti progressivamente:
   # grafana, loki, prometheus, tempo
