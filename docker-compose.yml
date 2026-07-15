@@ -68,6 +68,23 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-auth:
+    image: postgres:17-alpine
+    container_name: san-martino-postgres-auth
+    environment:
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth
+      POSTGRES_PASSWORD: auth
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres-auth-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U auth -d auth" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # --- NUOVO: Servizio Keycloak basato su PostgreSQL ---
   keycloak:
     image: quay.io/keycloak/keycloak:latest
@@ -139,3 +156,4 @@ volumes:
   postgres-stands-data:
   postgres-saga-data:
   postgres-keycloak-data: # Nuovo volume registrato
+  postgres-auth-data: # Nuovo volume registrato

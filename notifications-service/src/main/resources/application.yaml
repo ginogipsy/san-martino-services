@@ -10,7 +10,7 @@ spring:
       # di Spring (con JavaTimeModule) e wrappare in ErrorHandlingDeserializer.
   cloud: # Aggiungi questa sezione per Vault
     vault:
-      host: vault # Nome del servizio Vault in docker-compose
+      host: localhost # Nome del servizio Vault in docker-compose
       port: 8200
       scheme: http
       authentication: TOKEN

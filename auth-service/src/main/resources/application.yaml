@@ -8,9 +8,26 @@ spring:
           # URL del tuo realm per validare i token in ingresso
           issuer-uri: http://localhost:9080/realms/san-martino
           jwk-set-uri: http://localhost:9080/realms/san-martino/protocol/openid-connect/certs
-  cloud: # Aggiungi questa sezione per Vault
+  datasource:
+    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5437/auth}
+    username: ${AUTH_DB_USER:auth}
+    password: ${AUTH_DB_PASSWORD:auth}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  cloud:
     vault:
-      host: vault # Nome del servizio Vault in docker-compose
+      host: localhost # CAMBIATO DA 'vault' A 'localhost'
       port: 8200
       scheme: http
       authentication: TOKEN
