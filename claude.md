@@ -25,6 +25,7 @@ Applicazione per la gestione di eventi locali (ispirata al borgo di Arce) che co
 *   **Testing & Osservabilità:**
     *   Mockito, WebTestClient per i test.
     *   Grafana per i log, combinato con un approccio AOP (Aspect-Oriented Programming).
+*   **Gestione Segreti:** HashiCorp Vault con `spring-cloud-starter-vault-config`.
 
 ## 3. Architettura dei Microservizi
 
@@ -44,19 +45,21 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 
 ### Problemi Recenti Riscontrati:
 
-1.  **`auth-service` non si avvia:**
-    *   Errore: `Failed to configure a DataSource: 'url' attribute is not specified and no embedded datasource could be configured.`
-    *   Causa: Mancanza di configurazione del DataSource per l'`auth-service`.
-    *   Si è notato che la dipendenza `org.testcontainers:postgresql` è presente con `scope=test`.
-2.  **Configurazione Keycloak:**
+1.  **`auth-service` non si avvia (risolto il problema DataSource):**
+    *   Errore precedente: `Failed to configure a DataSource: 'url' attribute is not specified and no embedded datasource could be configured.`
+    *   Risolto aggiungendo `spring.datasource` e dipendenze JPA/PostgreSQL.
+2.  **`auth-service` non si avvia (nuovo errore Vault):**
+    *   Errore: `Cannot create authentication mechanism for TOKEN. This method requires either a Token (spring.cloud.vault.token) or a token file at ~/.vault-token.`
+    *   Causa: Mancanza di configurazione per l'autenticazione con HashiCorp Vault.
+3.  **Configurazione Keycloak:**
     *   Domanda: È possibile configurare il realm di Keycloak direttamente nel `docker-compose.yml`? (Il `docker-compose.yml` allegato mostra la configurazione di base di Keycloak con PostgreSQL).
-3.  **Integrazione FCM:**
+4.  **Integrazione FCM:**
     *   Necessità di rinforzare `.gitignore` per la chiave privata Firebase.
     *   `FcmPushNotificationSender` reale che legge la chiave Firebase via variabile d'ambiente.
 
 ## 5. Prossimi Passi (Priorità)
 
-1.  **Risolvere il problema di avvio dell'`auth-service`:** Configurare correttamente il DataSource.
+1.  **Risolvere il problema di avvio dell'`auth-service` (Vault):** Configurare correttamente l'integrazione con HashiCorp Vault.
 2.  **Completare e verificare lo smoke test per il `notifications-service`:** Assicurarsi che Kafka e FCM funzionino correttamente.
 3.  **Gestione della chiave privata FCM:** Assicurarsi che non venga committata e sia letta da variabile d'ambiente.
 4.  **Configurazione del realm Keycloak:** Valutare la possibilità di configurarlo via `docker-compose.yml` o altri metodi.

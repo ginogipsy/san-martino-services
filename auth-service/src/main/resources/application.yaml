@@ -8,6 +8,13 @@ spring:
           # URL del tuo realm per validare i token in ingresso
           issuer-uri: http://localhost:9080/realms/san-martino
           jwk-set-uri: http://localhost:9080/realms/san-martino/protocol/openid-connect/certs
+  cloud: # Aggiungi questa sezione per Vault
+    vault:
+      host: vault # Nome del servizio Vault in docker-compose
+      port: 8200
+      scheme: http
+      authentication: TOKEN
+      token: my-root-token # ATTENZIONE: Non hardcodare in produzione! Usare variabili d'ambiente o altri metodi sicuri.
 
 # Parametri personalizzati per l'Admin Client
 keycloak:

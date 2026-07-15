@@ -8,6 +8,13 @@ spring:
       auto-offset-reset: earliest
       # Deserializers configurati in KafkaConsumerConfig per usare l'ObjectMapper
       # di Spring (con JavaTimeModule) e wrappare in ErrorHandlingDeserializer.
+  cloud: # Aggiungi questa sezione per Vault
+    vault:
+      host: vault # Nome del servizio Vault in docker-compose
+      port: 8200
+      scheme: http
+      authentication: TOKEN
+      token: my-root-token # ATTENZIONE: Non hardcodare in produzione! Usare variabili d'ambiente o altri metodi sicuri.
 
 server:
   port: ${NOTIFICATIONS_PORT:8084}
