@@ -6,12 +6,13 @@ spring:
       resourceserver:
         jwt:
           # URL del tuo realm per validare i token in ingresso
-          issuer-uri: http://localhost:9080/realms/san-martino
-          jwk-set-uri: http://localhost:9080/realms/san-martino/protocol/openid-connect/certs
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:9080/realms/san-martino}
+          jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:9080/realms/san-martino/protocol/openid-connect/certs}
   datasource:
-    url: ${AUTH_DB_URL:jdbc:postgresql://localhost:5437/auth}
-    username: ${AUTH_DB_USER:auth}
-    password: ${AUTH_DB_PASSWORD:auth}
+    # La URL del database, configurabile via variabile d'ambiente o con un default coerente con docker-compose
+    url: ${AUTH_DB_URL:jdbc:postgresql://postgres-keycloak:5432/auth_service_db}
+    # username e password verranno letti da Vault
+    driver-class-name: org.postgresql.Driver
   jpa:
     open-in-view: false
     hibernate:
@@ -27,21 +28,27 @@ spring:
 
   cloud:
     vault:
-      host: localhost # CAMBIATO DA 'vault' A 'localhost'
+      host: localhost # CAMBIATO DA 'vault' A 'localhost' per esecuzione locale
       port: 8200
       scheme: http
       authentication: TOKEN
       token: my-root-token # ATTENZIONE: Non hardcodare in produzione! Usare variabili d'ambiente o altri metodi sicuri.
+      # Aggiungi la configurazione per i percorsi dei segreti
+      application-name: auth-service # Usa il nome dell'applicazione per il percorso base
+      generic:
+        enabled: true # Abilita la lettura dei segreti generici da Vault.
+        # Spring Cloud Vault cercherà automaticamente le proprietà del DataSource
+        # sotto secret/auth-service (grazie a application-name)
 
 # Parametri personalizzati per l'Admin Client
 keycloak:
-  server-url: http://localhost:8080
-  realm: san-martino
-  client-id: admin-cli-wrapper # Un client con "Service Accounts Enabled" su Keycloak
-  client-secret: d457ab89-9283-4d14-b3ba-8f82a5a244f5
+  server-url: ${KEYCLOAK_SERVER_URL:http://localhost:9080}
+  realm: ${KEYCLOAK_REALM:san-martino}
+  client-id: ${KEYCLOAK_CLIENT_ID:admin-cli-wrapper} # Un client con "Service Accounts Enabled" su Keycloak
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:d457ab89-9283-4d14-b3ba-8f82a5a244f5}
 
 server:
-  port: ${GATEWAY_PORT:8085}
+  port: ${AUTH_PORT:8085}
 
 springdoc:
   swagger-ui:
@@ -58,4 +65,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
