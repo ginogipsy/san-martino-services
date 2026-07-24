@@ -52,9 +52,9 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
     *   Errore: `Cannot create authentication mechanism for TOKEN. This method requires either a Token (spring.cloud.vault.token) or a token file at ~/.vault-token.`
     *   Causa: Mancanza di configurazione per l'autenticazione con HashiCorp Vault.
 3.  **Configurazione Keycloak:**
-    *   Domanda: È possibile configurare il realm di Keycloak direttamente nel `docker-compose.yml`? (Il `docker-compose.yml` allegato mostra la configurazione di base di Keycloak con PostgreSQL).
+    *   Domanda: È possibile configurare il realm di Keycloak direttamente nel `../docker-compose.yml`? (Il `../docker-compose.yml` allegato mostra la configurazione di base di Keycloak con PostgreSQL).
 4.  **Integrazione FCM:**
-    *   Necessità di rinforzare `.gitignore` per la chiave privata Firebase.
+    *   Necessità di rinforzare `../.gitignore` per la chiave privata Firebase.
     *   `FcmPushNotificationSender` reale che legge la chiave Firebase via variabile d'ambiente.
 
 ## 5. Prossimi Passi (Priorità)
@@ -62,7 +62,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 1.  **Risolvere il problema di avvio dell'`auth-service` (Vault):** Configurare correttamente l'integrazione con HashiCorp Vault.
 2.  **Completare e verificare lo smoke test per il `notifications-service`:** Assicurarsi che Kafka e FCM funzionino correttamente.
 3.  **Gestione della chiave privata FCM:** Assicurarsi che non venga committata e sia letta da variabile d'ambiente.
-4.  **Configurazione del realm Keycloak:** Valutare la possibilità di configurarlo via `docker-compose.yml` o altri metodi.
+4.  **Configurazione del realm Keycloak:** Valutare la possibilità di configurarlo via `../docker-compose.yml` o altri metodi.
 5.  **Smoke test end-to-end via Saga.**
 
 ## 6. Decisioni Prese in Precedenza

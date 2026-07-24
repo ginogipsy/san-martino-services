@@ -1,10 +1,12 @@
 spring:
   application:
     name: events-service
+  config:
+    import: vault://
   datasource:
-    url: ${EVENTS_DB_URL:jdbc:postgresql://localhost:5433/events}
-    username: ${EVENTS_DB_USER:events}
-    password: ${EVENTS_DB_PASSWORD:events}
+    url: ${EVENTS_DB_URL} # Verrà da Vault o variabile d'ambiente
+    username: ${EVENTS_DB_USER} # Verrà da Vault o variabile d'ambiente
+    password: ${EVENTS_DB_PASSWORD} # Verrà da Vault o variabile d'ambiente
   jpa:
     open-in-view: false
     hibernate:
@@ -17,13 +19,17 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-  cloud: # Aggiungi questa sezione per Vault
+  cloud:
     vault:
-      host: localhost # Nome del servizio Vault in docker-compose
+      host: localhost
       port: 8200
       scheme: http
       authentication: TOKEN
       token: my-root-token # ATTENZIONE: Non hardcodare in produzione! Usare variabili d'ambiente o altri metodi sicuri.
+      kv:
+        enabled: true
+        backend: secret
+        default-context: events-service
 
 server:
   port: ${EVENTS_PORT:8081}

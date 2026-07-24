@@ -1,23 +1,35 @@
 spring:
   application:
     name: gateway
+  config:
+    import: vault://
   cloud:
     gateway:
       server:
         webmvc:
           routes:
             - id: events
-              uri: ${EVENTS_URI:http://localhost:8081}
+              uri: ${EVENTS_URI} # Verrà da Vault o variabile d'ambiente
               predicates:
                 - Path=/v1/events/**
               filters:
                 - CircuitBreaker=eventsCb,forward:/fallback/events
             - id: stands
-              uri: ${STANDS_URI:http://localhost:8082}
+              uri: ${STANDS_URI} # Verrà da Vault o variabile d'ambiente
               predicates:
                 - Path=/v1/stands/**
               filters:
                 - CircuitBreaker=standsCb,forward:/fallback/stands
+    vault:
+      host: localhost
+      port: 8200
+      scheme: http
+      authentication: TOKEN
+      token: my-root-token # ATTENZIONE: Non hardcodare in produzione! Usare variabili d'ambiente o altri metodi sicuri.
+      kv:
+        enabled: true
+        backend: secret
+        default-context: gateway
 
 server:
   port: ${GATEWAY_PORT:8080}

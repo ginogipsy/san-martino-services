@@ -141,12 +141,157 @@ services:
     ports:
       - "8200:8200"
     environment:
-      VAULT_DEV_ROOT_TOKEN_ID: "my-root-token" # Il token master per fare login (usane uno semplice in locale)
+      VAULT_DEV_ROOT_TOKEN_ID: "my-root-token"
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
     cap_add:
-      - IPC_LOCK # Ottimizzazione Linux per impedire che i segreti finiscano nello swap su disco
-      - SYS_PTRACE # Ottimizzazione Linux per debuggare Vault
-      - SYS_ADMIN # Ottimizzazione Linux per debuggare Vault
+      - IPC_LOCK
+      - SYS_PTRACE
+      - SYS_ADMIN
+    healthcheck:
+      test: [ "CMD", "vault", "status", "-address=http://127.0.0.1:8200" ]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  vault-init: # Questo servizio si occupa di popolare Vault
+    image: hashicorp/vault:latest # CAMBIATO: Usa l'immagine Vault per avere il client preinstallato
+    container_name: san-martino-vault-init # Aggiunto un nome per chiarezza
+    command: >
+      sh -c "
+        # Attendi che Vault sia healthy
+        until vault status -address=http://vault:8200; do # Usiamo il client vault per il check
+          echo 'Waiting for Vault to be unsealed and ready...'
+          sleep 2
+        done
+        echo 'Vault is ready. Populating secrets...'
+
+        # Autenticati a Vault
+        vault login -address=http://vault:8200 my-root-token # AGGIUNTO: Autenticazione
+
+        # Esegui qui tutti i tuoi comandi vault kv put
+        vault kv put secret/auth-service \
+            spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9080/realms/san-martino \
+            spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9080/realms/san-martino/protocol/openid-connect/certs \
+            spring.datasource.url=jdbc:postgresql://localhost:5437/events/auth \
+            spring.datasource.username=auth \
+            spring.datasource.password=auth \
+            keycloak.server-url=http://localhost:9080 \
+            keycloak.realm=san-martino \
+            keycloak.client-id=admin-cli-wrapper \
+            keycloak.client-secret=d457ab89-9283-4d14-b3ba-8f82a5a244f5
+
+        vault kv put secret/events-service \
+            spring.datasource.url=jdbc:postgresql://localhost:5433/events \
+            spring.datasource.username=events \
+            spring.datasource.password=events
+
+        vault kv put secret/gateway \
+            EVENTS_URI=http://localhost:8081 \
+            STANDS_URI=http://localhost:8082
+
+        vault kv put secret/notifications-service \
+            spring.kafka.bootstrap-servers=localhost:9092 \
+            sanmartino.fcm.credentials-path=/path/to/your/fcm/credentials.json
+
+        vault kv put secret/saga-orchestrator \
+            spring.datasource.url=jdbc:postgresql://localhost:5435/saga \
+            spring.datasource.username=saga \
+            spring.datasource.password=saga \
+            clients.events-base-url=http://localhost:8081 \
+            clients.stands-base-url=http://localhost:8082 \
+            spring.kafka.bootstrap-servers=localhost:9092
+
+        vault kv put secret/stands-service \
+            spring.datasource.url=jdbc:postgresql://localhost:5434/stands \
+            spring.datasource.username=stands \
+            spring.datasource.password=stands
+        echo 'Vault population complete.'
+      "
+    environment:
+      VAULT_ADDR: http://vault:8200 # Usa il nome del servizio Docker Compose
+      VAULT_TOKEN: my-root-token # Passa il token per l'autenticazione
+    depends_on:
+      vault:
+        condition: service_healthy # vault-init parte solo quando Vault è healthy
+    restart: "no" # Questo servizio deve essere eseguito solo una volta e poi terminare
+
+  auth-service:
+    build: ./auth-service
+    ports:
+      - "8085:8085"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully # AGGIUNTO: auth-service parte solo dopo che vault-init ha finito
+      postgres-auth: # Assicurati che dipenda anche dal suo DB
+        condition: service_healthy
+      keycloak: # E da Keycloak se necessario
+        condition: service_healthy
+      kafka: # E da Kafka se necessario
+        condition: service_healthy
+  events-service:
+    build: ./events-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      postgres-events:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+  gateway:
+    build: ./gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      events-service: # Gateway instrada a events-service
+        condition: service_healthy
+      stands-service: # Gateway instrada a stands-service
+        condition: service_healthy
+      auth-service: # Gateway instrada a auth-service
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+  notifications-service:
+    build: ./notifications-service
+    ports:
+      - "8084:8084"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      kafka:
+        condition: service_healthy
+  saga-orchestrator:
+    build: ./saga-orchestrator
+    ports:
+      - "8083:8083"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      postgres-saga:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      events-service: # Saga orchestra anche events-service
+        condition: service_healthy
+      stands-service: # Saga orchestra anche stands-service
+        condition: service_healthy
+      auth-service: # Saga orchestra anche auth-service
+        condition: service_healthy
+  stands-service:
+    build: ./stands-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      postgres-stands:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
 
   # Verranno aggiunti progressivamente:
   # grafana, loki, prometheus, tempo
