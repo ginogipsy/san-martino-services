@@ -8,7 +8,7 @@
     <parent>
         <groupId>com.ginogipsy.sanmartino</groupId>
         <artifactId>san-martino-services</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>0.0.1</version>
     </parent>
 
     <artifactId>stands-service</artifactId>
