@@ -1,0 +1,57 @@
+#-------------------------------------------------------------------------------#
+#            Discover all capabilities of Qodana in our documentation           #
+#             https://www.jetbrains.com/help/qodana/about-qodana.html           #
+#-------------------------------------------------------------------------------#
+
+name: Qodana
+on:
+  workflow_dispatch:
+  # Stessi target di ci-cd.yml, per non avere due nozioni diverse di "branch
+  # che contano". feature/* è coperto dall'evento pull_request verso develop.
+  pull_request:
+    branches:
+      - master
+      - develop
+      - 'release/**'
+  push:
+    branches:
+      - master
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
+
+# Su PR annulla le analisi superate: Qodana è lenta e le run vecchie non servono.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  qodana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      # `contents: write` serve solo con push-fixes abilitato: qui è 'none'.
+      contents: read
+      pull-requests: write   # post-pr-comment
+      checks: write          # use-annotations
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sui push l'espressione pull_request.head.sha è vuota: senza il
+          # fallback il checkout resta implicito e la ref analizzata è ambigua.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: 'Qodana Scan'
+        uses: JetBrains/qodana-action@v2026.2
+        env:
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+        with:
+          # When pr-mode is set to true, Qodana analyzes only the files that have been changed
+          pr-mode: false
+          use-caches: true
+          post-pr-comment: true
+          use-annotations: true
+          # Upload Qodana results (SARIF, other artifacts, logs) as an artifact to the job
+          upload-result: false
+          # quick-fixes available in Ultimate and Ultimate Plus plans
+          push-fixes: 'none'
