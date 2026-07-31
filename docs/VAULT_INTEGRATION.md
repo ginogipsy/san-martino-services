@@ -61,7 +61,7 @@ Questi comandi inseriscono i segreti nel percorso `secret/<NOME_SERVIZIO>`. Ques
 vault kv put secret/auth-service \
     spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9080/realms/san-martino \
     spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9080/realms/san-martino/protocol/openid-connect/certs \
-    spring.datasource.url=jdbc:postgresql://localhost:5437/events/auth \
+    spring.datasource.url=jdbc:postgresql://localhost:5437/auth \
     spring.datasource.username=auth \
     spring.datasource.password=auth \
     keycloak.server-url=http://localhost:9080 \
