@@ -157,19 +157,23 @@ services:
   vault-init: # Questo servizio si occupa di popolare Vault
     image: hashicorp/vault:latest # CAMBIATO: Usa l'immagine Vault per avere il client preinstallato
     container_name: san-martino-vault-init # Aggiunto un nome per chiarezza
-    command: >
-      sh -c "
-        # Attendi che Vault sia healthy
-        until vault status -address=http://vault:8200; do # Usiamo il client vault per il check
+    # ATTENZIONE: usare SEMPRE uno scalare literal (|) e non folded (>).
+    # Con `>` YAML collassa i newline in spazi: le continuazioni `\` si rompono,
+    # ogni `vault kv put` parte senza dati ("Must supply data") e il container
+    # esce comunque 0 perché l'ultimo comando è un echo → fallimento silenzioso.
+    # `set -e` garantisce che un kv put fallito faccia fallire il container.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        # VAULT_ADDR e VAULT_TOKEN arrivano dal blocco environment: niente
+        # `-address=` ripetuti e niente `vault login`.
+        until vault status > /dev/null 2>&1; do
           echo 'Waiting for Vault to be unsealed and ready...'
           sleep 2
         done
         echo 'Vault is ready. Populating secrets...'
 
-        # Autenticati a Vault
-        vault login -address=http://vault:8200 my-root-token # AGGIUNTO: Autenticazione
-
-        # Esegui qui tutti i tuoi comandi vault kv put
         vault kv put secret/auth-service \
             spring.security.oauth2.resourceserver.jwt.issuer-uri=http://localhost:9080/realms/san-martino \
             spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9080/realms/san-martino/protocol/openid-connect/certs \
@@ -206,8 +210,8 @@ services:
             spring.datasource.url=jdbc:postgresql://localhost:5434/stands \
             spring.datasource.username=stands \
             spring.datasource.password=stands
+
         echo 'Vault population complete.'
-      "
     environment:
       VAULT_ADDR: http://vault:8200 # Usa il nome del servizio Docker Compose
       VAULT_TOKEN: my-root-token # Passa il token per l'autenticazione
