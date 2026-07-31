@@ -367,7 +367,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p docs/api
-          rm -f docs/api/*.html docs/api/index.md
+          # Anche i .bundled.yaml: se una spec viene rimossa da api/, il suo
+          # output non deve restare orfano in docs/api.
+          rm -f docs/api/*.html docs/api/*.bundled.yaml docs/api/index.md
 
           {
             echo "<!-- GENERATO AUTOMATICAMENTE da .github/workflows/ci-cd.yml — non modificare a mano. -->"
