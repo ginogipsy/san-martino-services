@@ -1,0 +1,462 @@
+name: CI/CD
+
+# ---------------------------------------------------------------------------
+# San Martino — pipeline monorepo Maven multi-modulo (Java 26 / Spring Boot 4)
+#
+#   build-test  ──► build-images ──► (push GHCR solo su master)
+#               └─► docs         ──► (commit automatico solo su develop)
+#
+# Allineata a git flow:
+#   feature/*  → PR verso develop        → build + test + drift check docs
+#   develop    → push                    → build + test + commit docs
+#   release/*  → branch + PR verso master→ build + test + immagini (no push)
+#   hotfix/*   → branch + PR verso master→ build + test + immagini (no push)
+#   master     → push (merge di release) → build + test + push immagini su GHCR
+# ---------------------------------------------------------------------------
+
+on:
+  push:
+    # git flow: i branch "long lived" + i branch di stabilizzazione.
+    # feature/* NON è qui: viene coperto dall'evento pull_request verso develop
+    # (evita di consumare due run per lo stesso commit).
+    branches:
+      - master
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
+    paths:
+      # Codice e build
+      - '**/*.java'
+      - '**/pom.xml'
+      - 'mvnw'
+      - 'mvnw.cmd'
+      - '.mvn/**'
+      # Contratti API-first (sorgente della generazione openapi-generator)
+      - 'api/**/*.yaml'
+      - 'api/**/*.yml'
+      # Configurazione runtime dei servizi (application.yaml, migrazioni Flyway...)
+      - '**/src/main/resources/**'
+      # Infra usata dai test (Vault/Kafka/Postgres) e la pipeline stessa
+      - 'docker-compose.yml'
+      - '.github/workflows/ci-cd.yml'
+      # NB: 'docs/**' NON è nella lista — vedi job "docs" (anti-loop)
+  pull_request:
+    # Target ammessi da git flow: feature/bugfix → develop, release/hotfix → master,
+    # fix tardivi → release/*.
+    branches:
+      - master
+      - develop
+      - 'release/**'
+    paths:
+      - '**/*.java'
+      - '**/pom.xml'
+      - 'mvnw'
+      - 'mvnw.cmd'
+      - '.mvn/**'
+      - 'api/**/*.yaml'
+      - 'api/**/*.yml'
+      - '**/src/main/resources/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/ci-cd.yml'
+  workflow_dispatch:
+
+# Su PR le run vecchie vengono annullate; sui branch git flow no (servono per
+# il push GHCR e per il commit automatico delle docs).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Default restrittivo: ogni job alza solo i permessi che gli servono.
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '26'
+  JAVA_DISTRIBUTION: 'temurin'
+  # MAVEN_ARGS è letto nativamente da Maven >= 3.9 (il wrapper qui usa 3.9.11):
+  # evita di ripetere i flag su ogni invocazione di ./mvnw.
+  MAVEN_ARGS: '-B -ntp'
+  # Pin esatto: output Redoc deterministico => nessun diff spurio in docs/
+  REDOCLY_VERSION: '1.34.2'
+
+jobs:
+
+  # =========================================================================
+  # 1. BUILD & TEST — compilazione dell'intero reactor + unit/integration test
+  # =========================================================================
+  build-test:
+    # NB: il context `env` non è disponibile in jobs.<id>.name → versione literal.
+    name: Build & Test (JDK 26)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    outputs:
+      version: ${{ steps.pom.outputs.version }}
+      image-prefix: ${{ steps.pom.outputs.image-prefix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          # La cache è gestita a mano nello step successivo (vedi spiegazione
+          # nel README della pipeline): serve controllo sulla chiave e la
+          # possibilità di escludere gli artifact del reactor stesso.
+
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          # hashFiles su TUTTI i pom del monorepo + versione del wrapper:
+          # un cambio di dipendenza in un solo modulo invalida la cache
+          # condivisa, che è il comportamento corretto per un reactor unico.
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # ---------------------------------------------------------------------
+      # Vault è un requisito HARD dei test: application.yaml di ogni servizio
+      # dichiara `spring.config.import: vault://` (non opzionale) e i
+      # datasource usano placeholder (${EVENTS_DB_URL}, ...) che vengono
+      # risolti dai secret KV. Riusiamo i servizi `vault` + `vault-init` del
+      # docker-compose.yml del repo: unica fonte di verità, zero duplicazione.
+      # I database NON servono qui: li fornisce Testcontainers.
+      # ---------------------------------------------------------------------
+      - name: Start Vault + seed secrets (from docker-compose.yml)
+        run: |
+          set -euo pipefail
+          docker compose up -d vault vault-init
+          echo "::group::vault-init logs"
+          code="$(docker wait san-martino-vault-init)"
+          docker compose logs --no-color vault-init
+          echo "::endgroup::"
+          if [ "$code" != "0" ]; then
+            echo "::error::vault-init è terminato con exit code $code — i secret KV non sono stati popolati."
+            exit 1
+          fi
+          docker compose exec -T vault vault status -address=http://127.0.0.1:8200
+
+      - name: Resolve coordinates from parent pom
+        id: pom
+        run: |
+          set -euo pipefail
+          version="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          prefix="$(./mvnw -q help:evaluate -Dexpression=docker.image.prefix -DforceStdout)"
+          echo "version=$version"           >> "$GITHUB_OUTPUT"
+          echo "image-prefix=$prefix"       >> "$GITHUB_OUTPUT"
+          echo "### 📦 \`$version\` — \`$prefix/<service>\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------------
+      # `verify` (non `install`): esegue surefire + failsafe senza sporcare
+      # ~/.m2 con gli artifact del reactor. Testcontainers funziona
+      # out-of-the-box su ubuntu-latest (Docker + Ryuk già disponibili),
+      # sia per PostgreSQL sia per Kafka.
+      # ---------------------------------------------------------------------
+      - name: Build & test (full reactor)
+        run: ./mvnw clean verify
+        env:
+          # Riutilizza le immagini già in cache locale del runner quando possibile
+          TESTCONTAINERS_REUSE_ENABLE: 'false'
+          # I placeholder di application.yaml normalmente arrivano da Vault;
+          # questi fallback evitano che un modulo non ancora "vaultizzato"
+          # blocchi la pipeline. @ServiceConnection di Testcontainers ha
+          # comunque precedenza sui valori di property.
+          EVENTS_DB_URL: jdbc:postgresql://localhost:5433/events
+          EVENTS_DB_USER: events
+          EVENTS_DB_PASSWORD: events
+          STANDS_DB_URL: jdbc:postgresql://localhost:5434/stands
+          STANDS_DB_USER: stands
+          STANDS_DB_PASSWORD: stands
+          SAGA_DB_URL: jdbc:postgresql://localhost:5435/saga
+          SAGA_DB_USER: saga
+          SAGA_DB_PASSWORD: saga
+          AUTH_DB_URL: jdbc:postgresql://localhost:5437/auth
+          AUTH_DB_USER: auth
+          AUTH_DB_PASSWORD: auth
+          KAFKA_BOOTSTRAP: localhost:9092
+
+      - name: Publish test report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: '**/target/*-reports/TEST-*.xml'
+          check_name: 'Test results'
+          fail_on_failure: false
+          require_tests: false
+
+      - name: Upload surefire/failsafe reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Collect Vault/infra logs on failure
+        if: failure()
+        run: docker compose logs --no-color vault vault-init || true
+
+      # Evita che artifact del progetto finiti in ~/.m2 (se un giorno si passa
+      # a `install`) mascherino una rottura reale in una run successiva.
+      - name: Prune reactor artifacts before cache save
+        if: always()
+        run: rm -rf ~/.m2/repository/com/ginogipsy
+
+  # =========================================================================
+  # 2. IMMAGINI OCI — un job per servizio, in parallelo (Buildpacks)
+  # =========================================================================
+  build-images:
+    name: Image · ${{ matrix.service }}
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write        # necessario per il push su GHCR con GITHUB_TOKEN
+
+    strategy:
+      fail-fast: false       # un servizio rotto non deve nascondere gli altri
+      matrix:
+        service:
+          - events-service
+          - stands-service
+          - auth-service
+          - gateway
+          - saga-orchestrator
+          - notifications-service
+
+    env:
+      VERSION: ${{ needs.build-test.outputs.version }}
+      IMAGE_PREFIX: ${{ needs.build-test.outputs.image-prefix }}
+      # Publish SOLO su push diretto a master (mai da PR, mai da fork).
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # cache/restore (non cache): 6 job paralleli che scrivono la stessa
+      # chiave si sovrascriverebbero a vicenda. La cache viene POPOLATA solo
+      # dal job build-test, qui è read-only.
+      - name: Restore Maven repository (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---------------------------------------------------------------------
+      # -pl :<artifactId> -am  →  costruisce SOLO il modulo target (+ parent).
+      # Il goal build-image è no-op sui progetti `pom`, quindi il parent nel
+      # reactor non causa problemi.
+      # Test già eseguiti nel job precedente => -DskipTests.
+      # `publish=false`: l'immagine viene caricata nel daemon Docker locale;
+      # il push lo facciamo con `docker push` (nessuna modifica al pom, e ci
+      # permette di applicare più tag).
+      # ---------------------------------------------------------------------
+      - name: Build OCI image (Cloud Native Buildpacks)
+        run: |
+          ./mvnw -pl :${{ matrix.service }} -am -DskipTests \
+                 package spring-boot:build-image \
+                 -Dspring-boot.build-image.publish=false
+
+      - name: Tag & push to GHCR
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          base="${IMAGE_PREFIX}/${{ matrix.service }}"
+          built="${base}:${VERSION}"
+          sha_tag="${base}:sha-${GITHUB_SHA::7}"
+
+          docker tag "$built" "$sha_tag"
+          docker tag "$built" "${base}:latest"
+
+          docker push "$built"
+          docker push "$sha_tag"
+          docker push "${base}:latest"
+
+          {
+            echo "### 🐳 ${{ matrix.service }}"
+            echo ""
+            echo "- \`$built\`"
+            echo "- \`$sha_tag\`"
+            echo "- \`${base}:latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Image built (no publish)
+        if: env.PUBLISH != 'true'
+        run: |
+          echo "### 🐳 ${{ matrix.service }} — build OK, publish skipped (ref: ${GITHUB_REF})" >> "$GITHUB_STEP_SUMMARY"
+          docker image ls "${IMAGE_PREFIX}/${{ matrix.service }}"
+
+  # =========================================================================
+  # 3. DOCS — rigenera il reference OpenAPI in docs/api/ dai .yaml in api/
+  #
+  #    push su develop        → rigenera e COMMITTA se ci sono variazioni
+  #    pull_request           → rigenera e FALLISCE se è out-of-date (gate)
+  #    push su master/release → rigenera e segnala (non bloccante)
+  #
+  # git flow: develop è l'UNICO branch su cui il bot scrive. Se committasse
+  # anche su master o su release/*, quei branch divergerebbero da develop e
+  # ogni back-merge del git flow ("Merge tag 'x' into develop") rischierebbe
+  # un conflitto su file generati. Le docs risalgono verso master solo
+  # attraverso i merge normali di git flow.
+  # =========================================================================
+  docs:
+    name: Docs (OpenAPI reference)
+    needs: build-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: write        # serve solo qui, per il commit automatico
+
+    steps:
+      # Su push: checkout del branch reale (non del commit detached) per poter
+      # committare. Su PR da fork il token è read-only: il job resta un check.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref_name || github.sha }}
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache npx / npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-redocly-${{ env.REDOCLY_VERSION }}
+
+      # Lint dei contratti: non bloccante finché le spec non sono allineate al
+      # ruleset "recommended". Togliere continue-on-error per renderlo un gate.
+      - name: Lint OpenAPI specs
+        continue-on-error: true
+        run: |
+          npx --yes @redocly/cli@${REDOCLY_VERSION} lint api/*.yaml \
+              --format=github-actions
+
+      - name: Generate HTML reference + index
+        run: |
+          set -euo pipefail
+          mkdir -p docs/api
+          rm -f docs/api/*.html docs/api/index.md
+
+          {
+            echo "<!-- GENERATO AUTOMATICAMENTE da .github/workflows/ci-cd.yml — non modificare a mano. -->"
+            echo "# API reference — San Martino"
+            echo ""
+            echo "Reference HTML rigenerato automaticamente da \`api/*.yaml\` a ogni push su \`develop\`."
+            echo "Per rigenerarlo in locale:"
+            echo ""
+            echo '```bash'
+            echo "npx @redocly/cli@${REDOCLY_VERSION} build-docs api/<spec>.yaml -o docs/api/<spec>.html"
+            echo '```'
+            echo ""
+            echo "| Contratto | Reference | Spec bundled |"
+            echo "|---|---|---|"
+          } > docs/api/index.md
+
+          for spec in api/*.yaml; do
+            base="$(basename "$spec" .yaml)"
+            echo "→ $spec"
+            npx --yes @redocly/cli@${REDOCLY_VERSION} build-docs "$spec" \
+                --output "docs/api/${base}.html" \
+                --title "San Martino — ${base}"
+            npx --yes @redocly/cli@${REDOCLY_VERSION} bundle "$spec" \
+                --output "docs/api/${base}.bundled.yaml"
+            echo "| \`${spec}\` | [${base}.html](./${base}.html) | [${base}.bundled.yaml](./${base}.bundled.yaml) |" >> docs/api/index.md
+          done
+
+      - name: Format generated docs
+        run: |
+          npx --yes prettier@3.3.3 --write 'docs/api/**/*.md' 'docs/api/**/*.yaml'
+
+      # ---------- push su develop: unico writer, committa se c'è drift ----------
+      - name: Commit & push updated docs
+        if: github.event_name == 'push' && github.ref_name == 'develop'
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          git add -A docs/api
+
+          if git diff --cached --quiet; then
+            echo "✅ docs/api già aggiornato — nessun commit."
+            echo "### 📚 Docs già allineate" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git diff --cached --stat
+          # [skip ci] + il fatto che 'docs/**' non sia nei paths di trigger:
+          # doppia protezione contro il loop di build.
+          git commit -m "docs(api): rigenera reference OpenAPI [skip ci]"
+
+          # Un altro commit può essere arrivato mentre giravano i test.
+          git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+          echo "### 📚 Docs rigenerate e committate su \`${GITHUB_REF_NAME}\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # -------------------- PR: solo verifica (no push) --------------------
+      - name: Verify docs are up to date
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet -- docs/api && [ -z "$(git ls-files --others --exclude-standard docs/api)" ]; then
+            echo "✅ docs/api è allineato alle spec."
+            exit 0
+          fi
+          echo "::error title=Docs out of date::docs/api non riflette api/*.yaml. Rigenera in locale e committa, oppure lascia che il merge su develop lo faccia automaticamente."
+          git --no-pager diff --stat -- docs/api
+          git status --short docs/api
+          exit 1
+
+      # ---- push su master / release/* / hotfix/*: segnala senza bloccare ----
+      # Su questi branch il bot NON scrive (vedi nota in testa al job). Un drift
+      # qui è un'anomalia da guardare, non un motivo per bloccare una release.
+      - name: Report docs drift (non-blocking)
+        if: github.event_name == 'push' && github.ref_name != 'develop'
+        run: |
+          if git diff --quiet -- docs/api && [ -z "$(git ls-files --others --exclude-standard docs/api)" ]; then
+            echo "✅ docs/api è allineato alle spec."
+          else
+            echo "::warning title=Docs drift su ${GITHUB_REF_NAME}::docs/api non riflette api/*.yaml. Allinea su develop e ri-mergia."
+            git --no-pager diff --stat -- docs/api
+          fi
+
+      - name: Upload generated docs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openapi-reference
+          path: docs/api
+          retention-days: 14
+          if-no-files-found: ignore
