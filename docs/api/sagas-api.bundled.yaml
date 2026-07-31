@@ -1,0 +1,229 @@
+openapi: 3.0.3
+info:
+  title: San Martino — Sagas API
+  description: |
+    Orchestratore di saga per coordinare transazioni distribuite tra
+    events-service e stands-service.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8083
+    description: Local dev
+tags:
+  - name: sagas
+    description: Esecuzione e stato delle saga
+paths:
+  /v1/sagas/create-event-with-stands:
+    post:
+      tags:
+        - sagas
+      summary: Avvia la saga "Crea evento con cantine"
+      description: |
+        Coordina la creazione di un Event in events-service, la validazione
+        delle cantine partecipanti in stands-service, e la registrazione
+        locale delle partecipazioni. Compensa (delete event) se la
+        validazione cantine fallisce.
+      operationId: startCreateEventWithStands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventWithStandsRequest'
+      responses:
+        '200':
+          description: Saga completata con successo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SagaInstance'
+        '422':
+          description: Saga compensata (uno step ha fallito ed e' stato rollbackato)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SagaInstance'
+  /v1/sagas/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - sagas
+      summary: Dettaglio di una saga (stato + step + partecipazioni)
+      operationId: getSaga
+      responses:
+        '200':
+          description: Saga trovata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SagaInstance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sagas:
+    get:
+      tags:
+        - sagas
+      summary: Elenca tutte le saga eseguite
+      operationId: listSagas
+      responses:
+        '200':
+          description: Lista saga
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SagaInstance'
+components:
+  schemas:
+    SagaStatus:
+      type: string
+      enum:
+        - STARTED
+        - COMPLETED
+        - FAILED
+        - COMPENSATING
+        - COMPENSATED
+    SagaStepStatus:
+      type: string
+      enum:
+        - PENDING
+        - COMPLETED
+        - FAILED
+        - COMPENSATED
+    LocalizedText:
+      type: object
+      required:
+        - it
+        - en
+      properties:
+        it:
+          type: string
+        en:
+          type: string
+    EventInput:
+      type: object
+      required:
+        - name
+        - place
+        - startDate
+        - endDate
+        - description
+      properties:
+        name:
+          type: string
+        place:
+          type: string
+        startDate:
+          type: string
+          format: date
+        endDate:
+          type: string
+          format: date
+        description:
+          $ref: '#/components/schemas/LocalizedText'
+    CreateEventWithStandsRequest:
+      type: object
+      required:
+        - event
+        - standIds
+      properties:
+        event:
+          $ref: '#/components/schemas/EventInput'
+        standIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+    SagaStep:
+      type: object
+      required:
+        - name
+        - stepOrder
+        - status
+      properties:
+        name:
+          type: string
+        stepOrder:
+          type: integer
+        status:
+          $ref: '#/components/schemas/SagaStepStatus'
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        message:
+          type: string
+    Participation:
+      type: object
+      required:
+        - eventId
+        - standId
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+    SagaInstance:
+      type: object
+      required:
+        - id
+        - type
+        - status
+        - steps
+        - participations
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: CreateEventWithStands
+        status:
+          $ref: '#/components/schemas/SagaStatus'
+        createdEventId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/SagaStep'
+        participations:
+          type: array
+          items:
+            $ref: '#/components/schemas/Participation'
+        message:
+          type: string
+    Problem:
+      type: object
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+  responses:
+    NotFound:
+      description: Risorsa non trovata
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
