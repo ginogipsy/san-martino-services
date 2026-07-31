@@ -28,20 +28,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateEventWithStandsRequest'
+              $ref: "#/components/schemas/CreateEventWithStandsRequest"
       responses:
-        '200':
+        "200":
           description: Saga completata con successo
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SagaInstance'
-        '422':
+                $ref: "#/components/schemas/SagaInstance"
+        "422":
           description: Saga compensata (uno step ha fallito ed e' stato rollbackato)
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SagaInstance'
+                $ref: "#/components/schemas/SagaInstance"
   /v1/sagas/{id}:
     parameters:
       - name: id
@@ -56,14 +56,14 @@ paths:
       summary: Dettaglio di una saga (stato + step + partecipazioni)
       operationId: getSaga
       responses:
-        '200':
+        "200":
           description: Saga trovata
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SagaInstance'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/SagaInstance"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /v1/sagas:
     get:
       tags:
@@ -71,14 +71,14 @@ paths:
       summary: Elenca tutte le saga eseguite
       operationId: listSagas
       responses:
-        '200':
+        "200":
           description: Lista saga
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/SagaInstance'
+                  $ref: "#/components/schemas/SagaInstance"
 components:
   schemas:
     SagaStatus:
@@ -126,7 +126,7 @@ components:
           type: string
           format: date
         description:
-          $ref: '#/components/schemas/LocalizedText'
+          $ref: "#/components/schemas/LocalizedText"
     CreateEventWithStandsRequest:
       type: object
       required:
@@ -134,7 +134,7 @@ components:
         - standIds
       properties:
         event:
-          $ref: '#/components/schemas/EventInput'
+          $ref: "#/components/schemas/EventInput"
         standIds:
           type: array
           items:
@@ -152,7 +152,7 @@ components:
         stepOrder:
           type: integer
         status:
-          $ref: '#/components/schemas/SagaStepStatus'
+          $ref: "#/components/schemas/SagaStepStatus"
         startedAt:
           type: string
           format: date-time
@@ -189,7 +189,7 @@ components:
           type: string
           example: CreateEventWithStands
         status:
-          $ref: '#/components/schemas/SagaStatus'
+          $ref: "#/components/schemas/SagaStatus"
         createdEventId:
           type: string
           format: uuid
@@ -202,11 +202,11 @@ components:
         steps:
           type: array
           items:
-            $ref: '#/components/schemas/SagaStep'
+            $ref: "#/components/schemas/SagaStep"
         participations:
           type: array
           items:
-            $ref: '#/components/schemas/Participation'
+            $ref: "#/components/schemas/Participation"
         message:
           type: string
     Problem:
@@ -226,4 +226,4 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"

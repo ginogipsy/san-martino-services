@@ -27,17 +27,17 @@ paths:
           in: query
           required: false
           schema:
-            $ref: '#/components/schemas/EventStatus'
+            $ref: "#/components/schemas/EventStatus"
           description: Filtra per stato (UPCOMING, PAST). Se omesso, ritorna tutto.
       responses:
-        '200':
+        "200":
           description: Lista degli eventi
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Event'
+                  $ref: "#/components/schemas/Event"
     post:
       tags:
         - events
@@ -48,16 +48,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EventCreate'
+              $ref: "#/components/schemas/EventCreate"
       responses:
-        '201':
+        "201":
           description: Edizione creata
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /v1/events/{id}:
     parameters:
       - name: id
@@ -72,14 +72,14 @@ paths:
       summary: Dettaglio di un'edizione
       operationId: getEvent
       responses:
-        '200':
+        "200":
           description: Edizione trovata
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Event"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       tags:
         - events
@@ -90,28 +90,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EventUpdate'
+              $ref: "#/components/schemas/EventUpdate"
       responses:
-        '200':
+        "200":
           description: Edizione aggiornata
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Event'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+                $ref: "#/components/schemas/Event"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       tags:
         - events
       summary: Elimina un'edizione
       operationId: deleteEvent
       responses:
-        '204':
+        "204":
           description: Eliminato
-        '404':
-          $ref: '#/components/responses/NotFound'
+        "404":
+          $ref: "#/components/responses/NotFound"
 components:
   schemas:
     EventStatus:
@@ -154,15 +154,15 @@ components:
         startDate:
           type: string
           format: date
-          example: '2026-11-14'
+          example: "2026-11-14"
         endDate:
           type: string
           format: date
-          example: '2026-11-15'
+          example: "2026-11-15"
         description:
-          $ref: '#/components/schemas/LocalizedText'
+          $ref: "#/components/schemas/LocalizedText"
         status:
-          $ref: '#/components/schemas/EventStatus'
+          $ref: "#/components/schemas/EventStatus"
         createdAt:
           type: string
           format: date-time
@@ -193,7 +193,7 @@ components:
           type: string
           format: date
         description:
-          $ref: '#/components/schemas/LocalizedText'
+          $ref: "#/components/schemas/LocalizedText"
     EventUpdate:
       type: object
       required:
@@ -218,7 +218,7 @@ components:
           type: string
           format: date
         description:
-          $ref: '#/components/schemas/LocalizedText'
+          $ref: "#/components/schemas/LocalizedText"
     Problem:
       type: object
       description: RFC 7807 Problem Details
@@ -240,10 +240,10 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
     BadRequest:
       description: Richiesta non valida
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: "#/components/schemas/Problem"
