@@ -37,33 +37,43 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   **Keycloak (Aggiornamento Importante):** Inizialmente pensato come servizio esterno, è stato ora inserito e integrato direttamente come modulo all'interno del repository principale.
 *   **Servizi Principali Implementati/In Corso:** `event-service`, `stands-service`, `gateway`, `saga-orchestrator`, `notifications-service`, `auth-service`.
 
-## 4. Stato di Avanzamento & Blocco Attuale
+## 4. Stato di Avanzamento
 
-*   La struttura dei servizi principali (`event-service`, `stands-service`, `gateway`, `saga-orchestrator`) è stata impostata.
-*   Stavamo implementando e configurando il `notifications-service` (con l'integrazione di Kafka e FCM).
-*   **Blocco Attuale:** Eravamo nel bel mezzo dell'esecuzione di uno **smoke test** per verificarne il corretto funzionamento quando la chat si è interrotta.
+*   La struttura dei sei servizi è impostata; tutti compilano (`./mvnw clean verify -DskipTests` → `BUILD SUCCESS`).
+*   **Pipeline CI/CD su GitHub Actions completata** (task #003): build & test su JDK 26, immagini OCI via Buildpacks per i sei servizi, push su GHCR limitato a `master`, rigenerazione automatica del reference OpenAPI in `docs/api/`. Analisi statica con Qodana. Dettagli in [ci-cd.md](./ci-cd.md).
+*   **Standard di codice formalizzati** in [CODING_STANDARDS.md](./CODING_STANDARDS.md); regole operative per gli agenti nel `CLAUDE.md` alla radice del repo.
 
-### Problemi Recenti Riscontrati:
+### Problemi risolti
 
-1.  **`auth-service` non si avvia (risolto il problema DataSource):**
-    *   Errore precedente: `Failed to configure a DataSource: 'url' attribute is not specified and no embedded datasource could be configured.`
-    *   Risolto aggiungendo `spring.datasource` e dipendenze JPA/PostgreSQL.
-2.  **`auth-service` non si avvia (nuovo errore Vault):**
-    *   Errore: `Cannot create authentication mechanism for TOKEN. This method requires either a Token (spring.cloud.vault.token) or a token file at ~/.vault-token.`
-    *   Causa: Mancanza di configurazione per l'autenticazione con HashiCorp Vault.
-3.  **Configurazione Keycloak:**
-    *   Domanda: È possibile configurare il realm di Keycloak direttamente nel `../docker-compose.yml`? (Il `../docker-compose.yml` allegato mostra la configurazione di base di Keycloak con PostgreSQL).
-4.  **Integrazione FCM:**
-    *   Necessità di rinforzare `../.gitignore` per la chiave privata Firebase.
-    *   `FcmPushNotificationSender` reale che legge la chiave Firebase via variabile d'ambiente.
+1.  **`auth-service` non si avviava (DataSource):**
+    *   Errore: `Failed to configure a DataSource: 'url' attribute is not specified…`
+    *   Risolto aggiungendo `spring.datasource` e le dipendenze JPA/PostgreSQL.
+2.  **`auth-service` non si avviava (Vault):**
+    *   Errore: `Cannot create authentication mechanism for TOKEN…`
+    *   Causa reale individuata durante il task #003, vedi punto successivo.
+3.  **`vault-init` non ha mai popolato un solo secret** — e usciva con codice 0, quindi il fallimento era invisibile.
+    *   Il `command:` nel `docker-compose.yml` usava uno scalare YAML *folded* (`>`), che collassa i newline: le continuazioni `\` si rompevano, ogni `vault kv put` partiva senza dati (`Must supply data`) e le righe successive venivano eseguite come comandi inesistenti. Siccome l'ultimo comando era un `echo`, il container segnalava successo.
+    *   Risolto passando a uno scalare *literal* (`|`) con entrypoint esplicito e `set -e`. Verificato: i sei secret sono ora presenti sotto `secret/`.
+    *   Questa è con ogni probabilità la causa dell'errore Vault al punto 2.
+
+### Problemi noti, ancora aperti
+
+1.  **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
+2.  **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
+3.  **URL datasource sospetto** nel secret `auth-service`: `jdbc:postgresql://localhost:5437/events/auth`, mentre il DB del container `postgres-auth` è `auth`. Il `/events/` in mezzo sembra un residuo di copia-incolla.
+4.  **`project.version` fisso a `0.0.1`**: ogni push su `master` sovrascrive i tag `0.0.1` e `latest` su GHCR. Serve una strategia di versioning.
+5.  **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
+6.  **Smoke test `notifications-service`** (Kafka + FCM) mai completato.
+7.  **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
 
 ## 5. Prossimi Passi (Priorità)
 
-1.  **Risolvere il problema di avvio dell'`auth-service` (Vault):** Configurare correttamente l'integrazione con HashiCorp Vault.
-2.  **Completare e verificare lo smoke test per il `notifications-service`:** Assicurarsi che Kafka e FCM funzionino correttamente.
-3.  **Gestione della chiave privata FCM:** Assicurarsi che non venga committata e sia letta da variabile d'ambiente.
-4.  **Configurazione del realm Keycloak:** Valutare la possibilità di configurarlo via `../docker-compose.yml` o altri metodi.
-5.  **Smoke test end-to-end via Saga.**
+1.  **Far girare la pipeline su una PR verso `develop`** e verificare le due incognite mai validate in locale: che `temurin:26` esista su `setup-java`, e che `EventsApiTest` passi con Vault più Testcontainers.
+2.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
+3.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
+4.  **Strategia di versioning** al posto dello `0.0.1` fisso.
+5.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
+6.  **Smoke test end-to-end via Saga.**
 
 ## 6. Decisioni Prese in Precedenza
 
