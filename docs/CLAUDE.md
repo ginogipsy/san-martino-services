@@ -58,13 +58,12 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 
 ### Problemi noti, ancora aperti
 
-1.  **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
-2.  **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
-3.  **URL datasource sospetto** nel secret `auth-service`: `jdbc:postgresql://localhost:5437/events/auth`, mentre il DB del container `postgres-auth` è `auth`. Il `/events/` in mezzo sembra un residuo di copia-incolla.
-4.  **`project.version` fisso a `0.0.1`**: ogni push su `master` sovrascrive i tag `0.0.1` e `latest` su GHCR. Serve una strategia di versioning.
-5.  **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
-6.  **Smoke test `notifications-service`** (Kafka + FCM) mai completato.
-7.  **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
+1. **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
+2. **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
+3. **`project.version` fisso a `0.0.1`**: ogni push su `master` sovrascrive i tag `0.0.1` e `latest` su GHCR. Serve una strategia di versioning.
+4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
+5. **Smoke test `notifications-service`** (Kafka + FCM) mai completato.
+6. **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
 
 ## 5. Prossimi Passi (Priorità)
 
