@@ -1,0 +1,81 @@
+# Promtail — raccoglie i log e li spedisce a Loki.
+#
+# Due sorgenti, perché in questo progetto i servizi si avviano in due modi diversi:
+#
+# 1. `sanmartino-files`: i file JSON (ECS) scritti da `logging.file.name`. È il caso
+#    normale, con i servizi avviati sull'host da IntelliJ. Il repo è montato in sola
+#    lettura su /workspace e si cercano i log sia in `logs/` alla radice sia in
+#    `<modulo>/logs/`, perché la working directory dipende da come lanci il servizio.
+#
+# 2. `docker-containers`: stdout dei container Compose (Kafka, Postgres, Keycloak, e i
+#    servizi se avviati in container con LOG_CONSOLE_FORMAT=ecs), via socket Docker.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  # Su volume dedicato: senza persistenza, a ogni restart Promtail rispedirebbe
+  # tutti i log dall'inizio e Loki li scarterebbe come duplicati.
+  filename: /tmp/positions/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+
+  # --- 1. File di log dei servizi (JSON in formato ECS) --------------------
+  - job_name: sanmartino-files
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: sanmartino
+          source: file
+          __path__: /workspace/logs/*.log
+      - targets: ['localhost']
+        labels:
+          job: sanmartino
+          source: file
+          __path__: /workspace/*/logs/*.log
+    pipeline_stages:
+      # Estrae i campi ECS prodotti da Spring Boot (`logging.structured.format.file: ecs`).
+      - json:
+          expressions:
+            level: 'log.level'
+            logger: 'log.logger'
+            service: 'service.name'
+            # JMESPath: `@` è un token riservato (nodo corrente), quindi il nome
+            # del campo ECS va fra doppi apici, altrimenti Promtail non parte.
+            timestamp: '"@timestamp"'
+      # SOLO label a bassa cardinalità. correlationId, operation e durationMs restano
+      # campi della riga JSON: si filtrano con `| json | correlationId="…"` senza
+      # trasformare ogni richiesta in una nuova serie temporale.
+      - labels:
+          level:
+          service:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+
+  # --- 2. Container Compose ------------------------------------------------
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+        filters:
+          # Solo i container di questo progetto Compose.
+          - name: label
+            values: ['com.docker.compose.project=san-martino-services']
+    relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/?(.*)'
+        target_label: container
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: service
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: stream
+      - target_label: job
+        replacement: docker
+      - target_label: source
+        replacement: docker

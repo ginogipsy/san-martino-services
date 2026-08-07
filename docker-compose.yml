@@ -224,6 +224,10 @@ services:
     build: ./auth-service
     ports:
       - "8085:8085"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully # AGGIUNTO: auth-service parte solo dopo che vault-init ha finito
@@ -237,6 +241,10 @@ services:
     build: ./events-service
     ports:
       - "8081:8081"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -248,6 +256,10 @@ services:
     build: ./gateway
     ports:
       - "8080:8080"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -263,6 +275,10 @@ services:
     build: ./notifications-service
     ports:
       - "8084:8084"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -272,6 +288,10 @@ services:
     build: ./saga-orchestrator
     ports:
       - "8083:8083"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -289,6 +309,10 @@ services:
     build: ./stands-service
     ports:
       - "8082:8082"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -297,8 +321,86 @@ services:
       kafka:
         condition: service_healthy
 
-  # Verranno aggiunti progressivamente:
-  # grafana, loki, prometheus, tempo
+  # =========================================================================
+  # OSSERVABILITÀ — metriche (Prometheus), log (Loki + Promtail), UI (Grafana)
+  #
+  # Si avvia da sola, senza il resto dello stack:
+  #   docker compose up -d prometheus loki promtail grafana
+  #
+  # I sei servizi girano di norma sull'host (IntelliJ), non in container: per
+  # questo Prometheus li cerca su host.docker.internal e Promtail legge i file
+  # JSON che scrivono in ./logs. Dettagli in docs/observability.md.
+  # Tempo (tracing distribuito) resta il prossimo passo, non è qui.
+  # =========================================================================
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: san-martino-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      # Consente `curl -X POST http://localhost:9090/-/reload` dopo una modifica
+      # a prometheus.yml, senza riavviare il container.
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      # Su Docker Desktop host.docker.internal esiste già; su Linux no, e senza
+      # questa riga i sei target risulterebbero DOWN senza un motivo evidente.
+      - "host.docker.internal:host-gateway"
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: san-martino-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./docker/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+
+  promtail:
+    image: grafana/promtail:3.4.2
+    container_name: san-martino-promtail
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./docker/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      # Il repo in sola lettura: Promtail cerca i log dei servizi sia in ./logs sia
+      # in <modulo>/logs, perché la working directory dipende da come li avvii.
+      - .:/workspace:ro
+      # Log dei container Compose (Kafka, Postgres, Keycloak...) via service discovery.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Le posizioni di lettura vanno persistite, altrimenti a ogni restart
+      # Promtail ripartirebbe dall'inizio dei file.
+      - promtail-positions:/tmp/positions
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: san-martino-grafana
+    environment:
+      # Credenziali di sviluppo, non un segreto da tenere nel repo: si sovrascrivono
+      # da .env (GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD).
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      # Data source (Prometheus + Loki) e dashboard pre-configurate.
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
 
 volumes:
   postgres-events-data:
@@ -306,3 +408,7 @@ volumes:
   postgres-saga-data:
   postgres-keycloak-data: # Nuovo volume registrato
   postgres-auth-data: # Nuovo volume registrato
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  promtail-positions:

@@ -1,0 +1,25 @@
+# Data source pre-configurate: all'avvio Grafana ha già Prometheus e Loki,
+# senza passare dalla UI. Gli uid sono fissati perché le dashboard li citano.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # POST: le query delle dashboard superano facilmente la lunghezza di una URL.
+      httpMethod: POST
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000

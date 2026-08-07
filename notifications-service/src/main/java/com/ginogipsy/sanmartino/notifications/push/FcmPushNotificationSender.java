@@ -1,5 +1,6 @@
 package com.ginogipsy.sanmartino.notifications.push;
 
+import com.ginogipsy.sanmartino.observability.Logged;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
@@ -12,6 +13,10 @@ import org.springframework.stereotype.Component;
 
 @Component("fcmPushNotificationSender")
 @ConditionalOnProperty(name = "sanmartino.fcm.enabled", havingValue = "true")
+// @Logged: notifications-service non ha @Service ne' @RestController, quindi senza
+// questa annotazione l'aspect non vedrebbe la chiamata verso FCM — che e' l'unica
+// dipendenza esterna del servizio, e quindi il punto dove servono durata ed esito.
+@Logged
 public class FcmPushNotificationSender implements PushNotificationSender {
 
     private static final Logger log = LoggerFactory.getLogger(FcmPushNotificationSender.class);
