@@ -73,6 +73,7 @@ docker compose up -d prometheus loki promtail grafana
 
 | Documento | Contenuto |
 |---|---|
+| [docs/RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | **Guida ai Rilasci e Versionamento (Smart Versioning)** |
 | [docs/ci-cd.md](docs/ci-cd.md) | pipeline GitHub Actions, cache monorepo, publishing GHCR, docs generate |
 | [docs/observability.md](docs/observability.md) | aspect AOP di logging, correlation id, stack Prometheus/Loki/Grafana |
 | [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | regole di codice, ID Sonar rilevanti, pattern architetturali |

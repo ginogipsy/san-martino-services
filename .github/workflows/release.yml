@@ -1,4 +1,4 @@
-name: Release & Version Bump
+name: Release & Smart Versioning
 
 on:
   push:
@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
 
     steps:
       - name: Checkout master
@@ -26,27 +27,69 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Get current version
-        id: get_version
+      - name: Determine Version
+        id: versioning
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          # 1. Legge la versione attuale dal pom.xml (base per il calcolo)
+          CURRENT_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
+          echo "Versione attuale nel POM: $CURRENT_VERSION"
+          
+          # 2. Analizza la PR di merge per capire l'intento
+          PR_NUMBER=$(git log -1 --pretty=%B | grep -oP 'Merge pull request #\K\d+' || true)
+          
+          INC_TYPE="patch"
+          REQ_VERSION=""
+          
+          if [ ! -z "$PR_NUMBER" ]; then
+            echo "Analizzando PR #$PR_NUMBER..."
+            # Controlla etichette (major, minor)
+            LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name')
+            if echo "$LABELS" | grep -iq "major"; then
+              INC_TYPE="major"
+            elif echo "$LABELS" | grep -iq "minor"; then
+              INC_TYPE="minor"
+            fi
+            
+            # Controlla se il branch ha un nome versione (es. release/1.2.0) alla fine
+            BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName')
+            if [[ "$BRANCH" =~ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              REQ_VERSION="${BASH_REMATCH[1]}"
+              echo "Versione rilevata dal branch ($BRANCH): $REQ_VERSION"
+            fi
+          fi
+          
+          # 3. Calcola la versione da RILASCIARE (Tag)
+          if [ ! -z "$REQ_VERSION" ]; then
+            RELEASE_VERSION="$REQ_VERSION"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+            if [ "$INC_TYPE" == "major" ]; then
+              RELEASE_VERSION="$((MAJOR + 1)).0.0"
+            elif [ "$INC_TYPE" == "minor" ]; then
+              RELEASE_VERSION="$MAJOR.$((MINOR + 1)).0"
+            else
+              # Se è patch, usiamo la versione attuale del POM
+              RELEASE_VERSION="$CURRENT_VERSION"
+            fi
+          fi
+          
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> $GITHUB_ENV
+          echo "release_version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
 
       - name: Create Git Tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ env.VERSION }}" -m "Release v${{ env.VERSION }}"
-          git push origin "v${{ env.VERSION }}"
+          git tag -a "v${{ env.RELEASE_VERSION }}" -m "Release v${{ env.RELEASE_VERSION }}"
+          git push origin "v${{ env.RELEASE_VERSION }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.VERSION }}
-          name: Release v${{ env.VERSION }}
-          draft: false
-          prerelease: false
+          tag_name: v${{ env.RELEASE_VERSION }}
+          name: Release v${{ env.RELEASE_VERSION }}
           generate_release_notes: true
 
       - name: Checkout develop for bump
@@ -54,20 +97,20 @@ jobs:
           git checkout develop
           git pull origin develop
 
-      - name: Bump Version (Patch)
+      - name: Bump Version for next cycle
         run: |
-          CURRENT_VERSION=${{ steps.get_version.outputs.version }}
-          # Semplice incremento della patch (assume formato x.y.z)
-          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
-          NEW_PATCH=$((patch + 1))
-          NEW_VERSION="$major.$minor.$NEW_PATCH"
+          REL_VERSION=${{ steps.versioning.outputs.release_version }}
+          
+          # Incrementiamo sempre la patch per il prossimo giro di develop
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$REL_VERSION"
+          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           
           ./mvnw versions:set -DnewVersion="$NEW_VERSION" -DgenerateBackupPoms=false
           
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "NEXT_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
       - name: Commit and Push Bump
         run: |
           git add **/pom.xml pom.xml
-          git commit -m "chore(release): bump version to ${{ env.NEW_VERSION }} [skip ci]"
+          git commit -m "chore(release): bump version to ${{ env.NEXT_VERSION }} [skip ci]"
           git push origin develop
