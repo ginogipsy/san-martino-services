@@ -103,8 +103,11 @@ services:
     ports:
       - "9080:8080"
     volumes:
-      # Monta il file JSON nella cartella di importazione predefinita di Keycloak
-      - ./mio-realm-export.json:/opt/keycloak/data/import/realm.json
+      # Monta il file JSON nella cartella di importazione predefinita di Keycloak.
+      # Il path deve puntare a un file esistente: con un path inesistente Docker
+      # crea al suo posto una directory, --import-realm non trova nessun .json e
+      # il realm `san-martino` non esiste (auth-service non ha piu' un issuer).
+      - ./san-martino-export.json:/opt/keycloak/data/import/realm.json:ro
     depends_on:
       postgres-keycloak:
         condition: service_healthy # Keycloak parte solo quando PostgreSQL risponde effettivamente all'healthcheck
