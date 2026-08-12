@@ -21,6 +21,8 @@
     <description>Backend monorepo for the "Le cantine di San Martino" festival app (Arce, FR).</description>
 
     <modules>
+        <!-- Libreria condivisa (aspect di logging, correlation id): niente immagine OCI. -->
+        <module>common-observability</module>
         <module>events-service</module>
         <module>stands-service</module>
         <module>gateway</module>
@@ -49,6 +51,12 @@
 
     <dependencyManagement>
         <dependencies>
+            <!-- Libreria interna: i servizi la dichiarano senza versione -->
+            <dependency>
+                <groupId>${project.groupId}</groupId>
+                <artifactId>common-observability</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.openapitools</groupId>
                 <artifactId>jackson-databind-nullable</artifactId>

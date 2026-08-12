@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf8" />
+  <title>San Martino — sagas-api</title>
+  <!-- needed for adaptive design -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      padding: 0;
+      margin: 0;
+    }
+  </style>
+  <script src="https://cdn.redocly.com/redoc/v2.4.0/bundles/redoc.standalone.js"></script><style data-styled="true" data-styled-version="6.4.4">.eDaeie{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.eDaeie{width:100%;padding:40px 40px;}}/*!sc*/
+.ctlIhe{width:calc(100% - 40%);padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.ctlIhe{width:100%;padding:0px 40px;}}/*!sc*/
+data-styled.g5[id="sc-hLllbt"]{content:"eDaeie,ctlIhe,"}/*!sc*/
+.iPIKIh{padding:40px 0;}/*!sc*/
+.iPIKIh:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.iPIKIh>.iPIKIh:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.iPIKIh{padding:0;}}/*!sc*/
+.cTnTji{padding:40px 0;position:relative;}/*!sc*/
+.cTnTji:last-child{min-height:calc(100vh + 1px);}/*!sc*/
+.cTnTji>.cTnTji:last-child{min-height:initial;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cTnTji{padding:0;}}/*!sc*/
+.cTnTji:not(:last-of-type):after{position:absolute;bottom:0;width:100%;display:block;content:'';border-bottom:1px solid rgba(0, 0, 0, 0.2);}/*!sc*/
+data-styled.g6[id="sc-eDgbZQ"]{content:"iPIKIh,cTnTji,"}/*!sc*/
+.jtFuxD{width:40%;color:#ffffff;background-color:#263238;padding:0 40px;}/*!sc*/
+@media print,screen and (max-width: 75rem){.jtFuxD{width:100%;padding:40px 40px;}}/*!sc*/
+data-styled.g7[id="sc-jTkVfb"]{content:"jtFuxD,"}/*!sc*/
+.iXwyZf{background-color:#263238;}/*!sc*/
+data-styled.g8[id="sc-gLfMdy"]{content:"iXwyZf,"}/*!sc*/
+.cSxdvF{display:flex;width:100%;padding:0;}/*!sc*/
+@media print,screen and (max-width: 75rem){.cSxdvF{flex-direction:column;}}/*!sc*/
+data-styled.g9[id="sc-iBIXdp"]{content:"cSxdvF,"}/*!sc*/
+.dgPnBP{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#333333;}/*!sc*/
+data-styled.g10[id="sc-ftDObM"]{content:"dgPnBP,"}/*!sc*/
+.iaWPiZ{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;margin:0 0 20px;}/*!sc*/
+data-styled.g11[id="sc-pilFg"]{content:"iaWPiZ,"}/*!sc*/
+.dRovbT{color:#ffffff;}/*!sc*/
+data-styled.g13[id="sc-kDLlSG"]{content:"dRovbT,"}/*!sc*/
+.bQgvAW{border-bottom:1px solid rgba(38, 50, 56, 0.3);margin:1em 0 1em 0;color:rgba(38, 50, 56, 0.5);font-weight:normal;text-transform:uppercase;font-size:0.929em;line-height:20px;}/*!sc*/
+data-styled.g14[id="sc-ipUpyX"]{content:"bQgvAW,"}/*!sc*/
+.iCaXBU{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.iCaXBU:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+h1:hover>.iCaXBU::before,h2:hover>.iCaXBU::before,.iCaXBU:hover::before{visibility:visible;}/*!sc*/
+data-styled.g15[id="sc-csfbns"]{content:"iCaXBU,"}/*!sc*/
+.hywULj{height:18px;width:18px;min-width:18px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.jwbVPj{height:18px;width:18px;min-width:18px;vertical-align:middle;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.laUMkN{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.laUMkN polygon{fill:#1d8127;}/*!sc*/
+.eFzWbV{height:1.5em;width:1.5em;min-width:1.5em;vertical-align:middle;float:left;transition:transform 0.2s ease-out;transform:rotateZ(-90deg);}/*!sc*/
+.eFzWbV polygon{fill:#d41f1c;}/*!sc*/
+.iVMpnF{height:20px;width:20px;min-width:20px;vertical-align:middle;float:right;transition:transform 0.2s ease-out;transform:rotateZ(0);}/*!sc*/
+.iVMpnF polygon{fill:white;}/*!sc*/
+data-styled.g16[id="sc-eoeTJ"]{content:"hywULj,jwbVPj,laUMkN,eFzWbV,iVMpnF,"}/*!sc*/
+.bCCqhL{border-left:1px solid #7c7cbb;box-sizing:border-box;position:relative;padding:10px 10px 10px 0;}/*!sc*/
+@media screen and (max-width: 50rem){.bCCqhL{display:block;overflow:hidden;}}/*!sc*/
+tr:first-of-type>.bCCqhL,tr.last>.bCCqhL{border-left-width:0;background-position:top left;background-repeat:no-repeat;background-size:1px 100%;}/*!sc*/
+tr:first-of-type>.bCCqhL{background-image:linear-gradient(
+      to bottom,
+      transparent 0%,
+      transparent 22px,
+      #7c7cbb 22px,
+      #7c7cbb 100%
+    );}/*!sc*/
+tr.last>.bCCqhL{background-image:linear-gradient(
+      to bottom,
+      #7c7cbb 0%,
+      #7c7cbb 22px,
+      transparent 22px,
+      transparent 100%
+    );}/*!sc*/
+tr.last+tr>.bCCqhL{border-left-color:transparent;}/*!sc*/
+tr.last:first-child>.bCCqhL{background:none;border-left-color:transparent;}/*!sc*/
+data-styled.g19[id="sc-hBhkkI"]{content:"bCCqhL,"}/*!sc*/
+.ieDrqd{vertical-align:top;line-height:20px;white-space:nowrap;font-size:13px;font-family:Courier,monospace;}/*!sc*/
+.ieDrqd.deprecated{text-decoration:line-through;color:#707070;}/*!sc*/
+data-styled.g21[id="sc-fFneKr"]{content:"ieDrqd,"}/*!sc*/
+.hKUbIp{border-bottom:1px solid #9fb4be;padding:10px 0;width:75%;box-sizing:border-box;}/*!sc*/
+tr.expanded .hKUbIp{border-bottom:none;}/*!sc*/
+@media screen and (max-width: 50rem){.hKUbIp{padding:0 20px;border-bottom:none;border-left:1px solid #7c7cbb;}tr.last>.hKUbIp{border-left:none;}}/*!sc*/
+data-styled.g22[id="sc-bjvxhe"]{content:"hKUbIp,"}/*!sc*/
+.dWMWLd{color:#7c7cbb;font-family:Courier,monospace;margin-right:10px;}/*!sc*/
+.dWMWLd::before{content:'';display:inline-block;vertical-align:middle;width:10px;height:1px;background:#7c7cbb;}/*!sc*/
+.dWMWLd::after{content:'';display:inline-block;vertical-align:middle;width:1px;background:#7c7cbb;height:7px;}/*!sc*/
+data-styled.g23[id="sc-idHmUl"]{content:"dWMWLd,"}/*!sc*/
+.gxcrxl{border-collapse:separate;border-radius:3px;font-size:14px;border-spacing:0;width:100%;}/*!sc*/
+.gxcrxl >tr{vertical-align:middle;}/*!sc*/
+@media screen and (max-width: 50rem){.gxcrxl{display:block;}.gxcrxl >tr,.gxcrxl >tbody>tr{display:block;}}/*!sc*/
+@media screen and (max-width: 50rem) and (-ms-high-contrast:none){.gxcrxl td{float:left;width:100%;}}/*!sc*/
+.gxcrxl .sc-dHPFqY,.gxcrxl .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY,.gxcrxl .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY{margin:1em;margin-right:0;background:#fafafa;}/*!sc*/
+.gxcrxl .sc-dHPFqY .sc-dHPFqY,.gxcrxl .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY,.gxcrxl .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY .sc-dHPFqY{background:#ffffff;}/*!sc*/
+data-styled.g25[id="sc-hIjUsD"]{content:"gxcrxl,"}/*!sc*/
+.eLQqJo >ul{list-style:none;padding:0;margin:0;margin:0 -5px;}/*!sc*/
+.eLQqJo >ul >li{padding:5px 10px;display:inline-block;background-color:#11171a;border-bottom:1px solid rgba(0, 0, 0, 0.5);cursor:pointer;text-align:center;outline:none;color:#ccc;margin:0 5px 5px 5px;border:1px solid #07090b;border-radius:5px;min-width:60px;font-size:0.9em;font-weight:bold;}/*!sc*/
+.eLQqJo >ul >li.react-tabs__tab--selected{color:#333333;background:#ffffff;}/*!sc*/
+.eLQqJo >ul >li.react-tabs__tab--selected:focus{outline:auto;}/*!sc*/
+.eLQqJo >ul >li:only-child{flex:none;min-width:100px;}/*!sc*/
+.eLQqJo >ul >li.tab-success{color:#1d8127;}/*!sc*/
+.eLQqJo >ul >li.tab-redirect{color:#ffa500;}/*!sc*/
+.eLQqJo >ul >li.tab-info{color:#87ceeb;}/*!sc*/
+.eLQqJo >ul >li.tab-error{color:#d41f1c;}/*!sc*/
+.eLQqJo >.react-tabs__tab-panel{background:#11171a;}/*!sc*/
+.eLQqJo >.react-tabs__tab-panel>div,.eLQqJo >.react-tabs__tab-panel>pre{padding:20px;margin:0;}/*!sc*/
+.eLQqJo >.react-tabs__tab-panel>div>pre{padding:0;}/*!sc*/
+data-styled.g31[id="sc-cxhVIO"]{content:"eLQqJo,"}/*!sc*/
+.bFZcpw code[class*='language-'],.bFZcpw pre[class*='language-']{text-shadow:0 -0.1em 0.2em black;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;word-wrap:normal;line-height:1.5;-moz-tab-size:4;-o-tab-size:4;tab-size:4;-webkit-hyphens:none;-moz-hyphens:none;-ms-hyphens:none;hyphens:none;}/*!sc*/
+@media print{.bFZcpw code[class*='language-'],.bFZcpw pre[class*='language-']{text-shadow:none;}}/*!sc*/
+.bFZcpw pre[class*='language-']{padding:1em;margin:0.5em 0;overflow:auto;}/*!sc*/
+.bFZcpw .token.comment,.bFZcpw .token.prolog,.bFZcpw .token.doctype,.bFZcpw .token.cdata{color:hsl(30, 20%, 50%);}/*!sc*/
+.bFZcpw .token.punctuation{opacity:0.7;}/*!sc*/
+.bFZcpw .namespace{opacity:0.7;}/*!sc*/
+.bFZcpw .token.property,.bFZcpw .token.tag,.bFZcpw .token.number,.bFZcpw .token.constant,.bFZcpw .token.symbol{color:#4a8bb3;}/*!sc*/
+.bFZcpw .token.boolean{color:#e64441;}/*!sc*/
+.bFZcpw .token.selector,.bFZcpw .token.attr-name,.bFZcpw .token.string,.bFZcpw .token.char,.bFZcpw .token.builtin,.bFZcpw .token.inserted{color:#a0fbaa;}/*!sc*/
+.bFZcpw .token.selector+a,.bFZcpw .token.attr-name+a,.bFZcpw .token.string+a,.bFZcpw .token.char+a,.bFZcpw .token.builtin+a,.bFZcpw .token.inserted+a,.bFZcpw .token.selector+a:visited,.bFZcpw .token.attr-name+a:visited,.bFZcpw .token.string+a:visited,.bFZcpw .token.char+a:visited,.bFZcpw .token.builtin+a:visited,.bFZcpw .token.inserted+a:visited{color:#4ed2ba;text-decoration:underline;}/*!sc*/
+.bFZcpw .token.property.string{color:white;}/*!sc*/
+.bFZcpw .token.operator,.bFZcpw .token.entity,.bFZcpw .token.url,.bFZcpw .token.variable{color:hsl(40, 90%, 60%);}/*!sc*/
+.bFZcpw .token.atrule,.bFZcpw .token.attr-value,.bFZcpw .token.keyword{color:hsl(350, 40%, 70%);}/*!sc*/
+.bFZcpw .token.regex,.bFZcpw .token.important{color:#e90;}/*!sc*/
+.bFZcpw .token.important,.bFZcpw .token.bold{font-weight:bold;}/*!sc*/
+.bFZcpw .token.italic{font-style:italic;}/*!sc*/
+.bFZcpw .token.entity{cursor:help;}/*!sc*/
+.bFZcpw .token.deleted{color:red;}/*!sc*/
+data-styled.g33[id="sc-iIXgSY"]{content:"bFZcpw,"}/*!sc*/
+.kTbBXK{opacity:0.7;transition:opacity 0.3s ease;text-align:right;}/*!sc*/
+.kTbBXK:focus-within{opacity:1;}/*!sc*/
+.kTbBXK >button{background-color:transparent;border:0;color:inherit;padding:2px 10px;font-family:Roboto,sans-serif;font-size:14px;line-height:1.5em;cursor:pointer;outline:0;}/*!sc*/
+.kTbBXK >button :hover,.kTbBXK >button :focus{background:rgba(255, 255, 255, 0.1);}/*!sc*/
+data-styled.g34[id="sc-ghUFvp"]{content:"kTbBXK,"}/*!sc*/
+.bAYqfR{position:relative;}/*!sc*/
+data-styled.g38[id="sc-kLTWBk"]{content:"bAYqfR,"}/*!sc*/
+.kVhPoT{margin-left:10px;text-transform:none;font-size:0.929em;color:black;}/*!sc*/
+data-styled.g42[id="sc-gXLJnt"]{content:"kVhPoT,"}/*!sc*/
+.fjsgEw{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.fjsgEw p:last-child{margin-bottom:0;}/*!sc*/
+.fjsgEw h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.fjsgEw h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.fjsgEw code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.fjsgEw pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.fjsgEw pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.fjsgEw pre code:before,.fjsgEw pre code:after{content:none;}/*!sc*/
+.fjsgEw blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.fjsgEw img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.fjsgEw ul,.fjsgEw ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.fjsgEw ul ul,.fjsgEw ol ul,.fjsgEw ul ol,.fjsgEw ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.fjsgEw table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.fjsgEw table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.fjsgEw table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.fjsgEw table th,.fjsgEw table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.fjsgEw table th{text-align:left;font-weight:bold;}/*!sc*/
+.fjsgEw .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.fjsgEw .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.fjsgEw h1:hover>.share-link::before,.fjsgEw h2:hover>.share-link::before,.fjsgEw .share-link:hover::before{visibility:visible;}/*!sc*/
+.fjsgEw a{text-decoration:auto;color:#32329f;}/*!sc*/
+.fjsgEw a:visited{color:#32329f;}/*!sc*/
+.fjsgEw a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.bSnquG{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.bSnquG p:last-child{margin-bottom:0;}/*!sc*/
+.bSnquG p:first-child{margin-top:0;}/*!sc*/
+.bSnquG p:last-child{margin-bottom:0;}/*!sc*/
+.bSnquG h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.bSnquG h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.bSnquG code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.bSnquG pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.bSnquG pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.bSnquG pre code:before,.bSnquG pre code:after{content:none;}/*!sc*/
+.bSnquG blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.bSnquG img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.bSnquG ul,.bSnquG ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.bSnquG ul ul,.bSnquG ol ul,.bSnquG ul ol,.bSnquG ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.bSnquG table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.bSnquG table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.bSnquG table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.bSnquG table th,.bSnquG table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.bSnquG table th{text-align:left;font-weight:bold;}/*!sc*/
+.bSnquG .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.bSnquG .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.bSnquG h1:hover>.share-link::before,.bSnquG h2:hover>.share-link::before,.bSnquG .share-link:hover::before{visibility:visible;}/*!sc*/
+.bSnquG a{text-decoration:auto;color:#32329f;}/*!sc*/
+.bSnquG a:visited{color:#32329f;}/*!sc*/
+.bSnquG a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+.dvzdQy{font-family:Roboto,sans-serif;font-weight:400;line-height:1.5em;}/*!sc*/
+.dvzdQy p:last-child{margin-bottom:0;}/*!sc*/
+.dvzdQy p:first-child{margin-top:0;}/*!sc*/
+.dvzdQy p:last-child{margin-bottom:0;}/*!sc*/
+.dvzdQy p{display:inline-block;}/*!sc*/
+.dvzdQy h1{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.85714em;line-height:1.6em;color:#32329f;margin-top:0;}/*!sc*/
+.dvzdQy h2{font-family:Montserrat,sans-serif;font-weight:400;font-size:1.57143em;line-height:1.6em;color:#333333;}/*!sc*/
+.dvzdQy code{color:#e53935;background-color:rgba(38, 50, 56, 0.05);font-family:Courier,monospace;border-radius:2px;border:1px solid rgba(38, 50, 56, 0.1);padding:0 5px;font-size:13px;font-weight:400;word-break:break-word;}/*!sc*/
+.dvzdQy pre{font-family:Courier,monospace;white-space:pre;background-color:#11171a;color:white;padding:20px;overflow-x:auto;line-height:normal;border-radius:0;border:1px solid rgba(38, 50, 56, 0.1);}/*!sc*/
+.dvzdQy pre code{background-color:transparent;color:white;padding:0;}/*!sc*/
+.dvzdQy pre code:before,.dvzdQy pre code:after{content:none;}/*!sc*/
+.dvzdQy blockquote{margin:0;margin-bottom:1em;padding:0 15px;color:#777;border-left:4px solid #ddd;}/*!sc*/
+.dvzdQy img{max-width:100%;box-sizing:content-box;}/*!sc*/
+.dvzdQy ul,.dvzdQy ol{padding-left:2em;margin:0;margin-bottom:1em;}/*!sc*/
+.dvzdQy ul ul,.dvzdQy ol ul,.dvzdQy ul ol,.dvzdQy ol ol{margin-bottom:0;margin-top:0;}/*!sc*/
+.dvzdQy table{display:block;width:100%;overflow:auto;word-break:normal;word-break:keep-all;border-collapse:collapse;border-spacing:0;margin-top:1.5em;margin-bottom:1.5em;}/*!sc*/
+.dvzdQy table tr{background-color:#fff;border-top:1px solid #ccc;}/*!sc*/
+.dvzdQy table tr:nth-child(2n){background-color:#fafafa;}/*!sc*/
+.dvzdQy table th,.dvzdQy table td{padding:6px 13px;border:1px solid #ddd;}/*!sc*/
+.dvzdQy table th{text-align:left;font-weight:bold;}/*!sc*/
+.dvzdQy .share-link{cursor:pointer;margin-left:-20px;padding:0;line-height:1;width:20px;display:inline-block;outline:0;}/*!sc*/
+.dvzdQy .share-link:before{content:'';width:15px;height:15px;background-size:contain;background-image:url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZlcnNpb249IjEuMSIgeD0iMCIgeT0iMCIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBlbmFibGUtYmFja2dyb3VuZD0ibmV3IDAgMCA1MTIgNTEyIiB4bWw6c3BhY2U9InByZXNlcnZlIj48cGF0aCBmaWxsPSIjMDEwMTAxIiBkPSJNNDU5LjcgMjMzLjRsLTkwLjUgOTAuNWMtNTAgNTAtMTMxIDUwLTE4MSAwIC03LjktNy44LTE0LTE2LjctMTkuNC0yNS44bDQyLjEtNDIuMWMyLTIgNC41LTMuMiA2LjgtNC41IDIuOSA5LjkgOCAxOS4zIDE1LjggMjcuMiAyNSAyNSA2NS42IDI0LjkgOTAuNSAwbDkwLjUtOTAuNWMyNS0yNSAyNS02NS42IDAtOTAuNSAtMjQuOS0yNS02NS41LTI1LTkwLjUgMGwtMzIuMiAzMi4yYy0yNi4xLTEwLjItNTQuMi0xMi45LTgxLjYtOC45bDY4LjYtNjguNmM1MC01MCAxMzEtNTAgMTgxIDBDNTA5LjYgMTAyLjMgNTA5LjYgMTgzLjQgNDU5LjcgMjMzLjR6TTIyMC4zIDM4Mi4ybC0zMi4yIDMyLjJjLTI1IDI0LjktNjUuNiAyNC45LTkwLjUgMCAtMjUtMjUtMjUtNjUuNiAwLTkwLjVsOTAuNS05MC41YzI1LTI1IDY1LjUtMjUgOTAuNSAwIDcuOCA3LjggMTIuOSAxNy4yIDE1LjggMjcuMSAyLjQtMS40IDQuOC0yLjUgNi44LTQuNWw0Mi4xLTQyYy01LjQtOS4yLTExLjYtMTgtMTkuNC0yNS44IC01MC01MC0xMzEtNTAtMTgxIDBsLTkwLjUgOTAuNWMtNTAgNTAtNTAgMTMxIDAgMTgxIDUwIDUwIDEzMSA1MCAxODEgMGw2OC42LTY4LjZDMjc0LjYgMzk1LjEgMjQ2LjQgMzkyLjMgMjIwLjMgMzgyLjJ6Ii8+PC9zdmc+Cg==');opacity:0.5;visibility:hidden;display:inline-block;vertical-align:middle;}/*!sc*/
+.dvzdQy h1:hover>.share-link::before,.dvzdQy h2:hover>.share-link::before,.dvzdQy .share-link:hover::before{visibility:visible;}/*!sc*/
+.dvzdQy a{text-decoration:auto;color:#32329f;}/*!sc*/
+.dvzdQy a:visited{color:#32329f;}/*!sc*/
+.dvzdQy a:hover{color:#6868cf;text-decoration:auto;}/*!sc*/
+data-styled.g43[id="sc-cBUbKg"]{content:"fjsgEw,bSnquG,dvzdQy,"}/*!sc*/
+.fsyARd{display:inline;}/*!sc*/
+data-styled.g44[id="sc-cjxXbH"]{content:"fsyARd,"}/*!sc*/
+.lnuoCU{position:relative;}/*!sc*/
+data-styled.g45[id="sc-jdbYXq"]{content:"lnuoCU,"}/*!sc*/
+.cFqGbU:hover>.sc-ghUFvp{opacity:1;}/*!sc*/
+data-styled.g50[id="sc-cUoYtZ"]{content:"cFqGbU,"}/*!sc*/
+.bsKEfU{font-family:Courier,monospace;font-size:13px;white-space:pre;contain:content;overflow-x:auto;}/*!sc*/
+.bsKEfU .redoc-json code>.collapser{display:none;pointer-events:none;}/*!sc*/
+.bsKEfU .callback-function{color:gray;}/*!sc*/
+.bsKEfU .collapser:after{content:'-';cursor:pointer;}/*!sc*/
+.bsKEfU .collapsed>.collapser:after{content:'+';cursor:pointer;}/*!sc*/
+.bsKEfU .ellipsis:after{content:' … ';}/*!sc*/
+.bsKEfU .collapsible{margin-left:2em;}/*!sc*/
+.bsKEfU .hoverable{padding-top:1px;padding-bottom:1px;padding-left:2px;padding-right:2px;border-radius:2px;}/*!sc*/
+.bsKEfU .hovered{background-color:rgba(235, 238, 249, 1);}/*!sc*/
+.bsKEfU .collapser{background-color:transparent;border:0;color:#fff;font-family:Courier,monospace;font-size:13px;padding-right:6px;padding-left:6px;padding-top:0;padding-bottom:0;display:flex;align-items:center;justify-content:center;width:15px;height:15px;position:absolute;top:4px;left:-1.5em;cursor:default;user-select:none;-webkit-user-select:none;padding:2px;}/*!sc*/
+.bsKEfU .collapser:focus{outline-color:#fff;outline-style:dotted;outline-width:1px;}/*!sc*/
+.bsKEfU ul{list-style-type:none;padding:0px;margin:0px 0px 0px 26px;}/*!sc*/
+.bsKEfU li{position:relative;display:block;}/*!sc*/
+.bsKEfU .hoverable{display:inline-block;}/*!sc*/
+.bsKEfU .selected{outline-style:solid;outline-width:1px;outline-style:dotted;}/*!sc*/
+.bsKEfU .collapsed>.collapsible{display:none;}/*!sc*/
+.bsKEfU .ellipsis{display:none;}/*!sc*/
+.bsKEfU .collapsed>.ellipsis{display:inherit;}/*!sc*/
+data-styled.g51[id="sc-jNTapI"]{content:"bsKEfU,"}/*!sc*/
+.gSTGKV{padding:0.9em;background-color:rgba(38,50,56,0.4);margin:0 0 10px 0;display:block;font-family:Montserrat,sans-serif;font-size:0.929em;line-height:1.5em;}/*!sc*/
+data-styled.g52[id="sc-dPGAlQ"]{content:"gSTGKV,"}/*!sc*/
+.jvAXnC{font-family:Montserrat,sans-serif;font-size:12px;position:absolute;z-index:1;top:-11px;left:12px;font-weight:600;color:rgba(255,255,255,0.7);}/*!sc*/
+data-styled.g53[id="sc-bBPDSh"]{content:"jvAXnC,"}/*!sc*/
+.eFnwLI{position:relative;}/*!sc*/
+data-styled.g54[id="sc-cONRau"]{content:"eFnwLI,"}/*!sc*/
+.btNvSR{margin-top:15px;}/*!sc*/
+data-styled.g57[id="sc-hTlzLV"]{content:"btNvSR,"}/*!sc*/
+.cgwPqz.deprecated span.property-name{text-decoration:line-through;color:#707070;}/*!sc*/
+.cgwPqz button{background-color:transparent;border:0;outline:0;font-size:13px;font-family:Courier,monospace;cursor:pointer;padding:0;color:#333333;}/*!sc*/
+.cgwPqz button:focus{font-weight:600;}/*!sc*/
+.cgwPqz .sc-eoeTJ{height:1.1em;width:1.1em;}/*!sc*/
+.cgwPqz .sc-eoeTJ polygon{fill:#666;}/*!sc*/
+data-styled.g58[id="sc-jgjMUi"]{content:"cgwPqz,"}/*!sc*/
+.bIRWpU{vertical-align:middle;font-size:13px;line-height:20px;}/*!sc*/
+data-styled.g59[id="sc-gSsQAz"]{content:"bIRWpU,"}/*!sc*/
+.eYGSYL{color:rgba(102,102,102,0.9);}/*!sc*/
+data-styled.g60[id="sc-lbFyRs"]{content:"eYGSYL,"}/*!sc*/
+.cvvLCE{color:#666;}/*!sc*/
+data-styled.g61[id="sc-iNOCxJ"]{content:"cvvLCE,"}/*!sc*/
+.fcblqy{color:#666;word-break:break-word;}/*!sc*/
+data-styled.g62[id="sc-jfLtrb"]{content:"fcblqy,"}/*!sc*/
+.cDdUTG{color:#d41f1c;font-size:0.9em;font-weight:normal;margin-left:20px;line-height:1;}/*!sc*/
+data-styled.g63[id="sc-eJTLNO"]{content:"cDdUTG,"}/*!sc*/
+.fQbQTQ{margin:0 5px;vertical-align:text-top;}/*!sc*/
+data-styled.g76[id="sc-ZGwKq"]{content:"fQbQTQ,"}/*!sc*/
+.PjloV{margin-top:0;margin-bottom:0.5em;}/*!sc*/
+data-styled.g93[id="sc-csnpUd"]{content:"PjloV,"}/*!sc*/
+.jZkByO{width:9ex;display:inline-block;height:13px;line-height:13px;background-color:#333;border-radius:3px;background-repeat:no-repeat;background-position:6px 4px;font-size:7px;font-family:Verdana,sans-serif;color:white;text-transform:uppercase;text-align:center;font-weight:bold;vertical-align:middle;margin-right:6px;margin-top:2px;}/*!sc*/
+.jZkByO.get{background-color:#2F8132;}/*!sc*/
+.jZkByO.post{background-color:#186FAF;}/*!sc*/
+.jZkByO.put{background-color:#95507c;}/*!sc*/
+.jZkByO.options{background-color:#947014;}/*!sc*/
+.jZkByO.patch{background-color:#bf581d;}/*!sc*/
+.jZkByO.delete{background-color:#cc3333;}/*!sc*/
+.jZkByO.basic{background-color:#707070;}/*!sc*/
+.jZkByO.link{background-color:#07818F;}/*!sc*/
+.jZkByO.head{background-color:#A23DAD;}/*!sc*/
+.jZkByO.hook{background-color:#32329f;}/*!sc*/
+.jZkByO.schema{background-color:#707070;}/*!sc*/
+data-styled.g101[id="sc-Wunit"]{content:"jZkByO,"}/*!sc*/
+.fGhESw{margin:0;padding:0;}/*!sc*/
+.fGhESw:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikrMhg .sc-ikrMhg{font-size:0.929em;}/*!sc*/
+.jmXYcV{margin:0;padding:0;display:none;}/*!sc*/
+.jmXYcV:first-child{padding-bottom:32px;}/*!sc*/
+.sc-ikrMhg .sc-ikrMhg{font-size:0.929em;}/*!sc*/
+data-styled.g102[id="sc-ikrMhg"]{content:"fGhESw,jmXYcV,"}/*!sc*/
+.ePUBuw{list-style:none inside none;overflow:hidden;text-overflow:ellipsis;padding:0;}/*!sc*/
+data-styled.g103[id="sc-tRtYB"]{content:"ePUBuw,"}/*!sc*/
+.dFiXsy{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;font-size:0.929em;text-transform:none;background-color:#fafafa;}/*!sc*/
+.dFiXsy:hover{color:#32329f;background-color:#e1e1e1;}/*!sc*/
+.dFiXsy .sc-eoeTJ{height:1.5em;width:1.5em;}/*!sc*/
+.dFiXsy .sc-eoeTJ polygon{fill:#333333;}/*!sc*/
+.iaJInc{cursor:pointer;color:#333333;margin:0;padding:12.5px 20px;display:flex;justify-content:space-between;font-family:Montserrat,sans-serif;background-color:#fafafa;}/*!sc*/
+.iaJInc:hover{color:#32329f;background-color:#ededed;}/*!sc*/
+.iaJInc .sc-eoeTJ{height:1.5em;width:1.5em;}/*!sc*/
+.iaJInc .sc-eoeTJ polygon{fill:#333333;}/*!sc*/
+data-styled.g104[id="sc-bidCnS"]{content:"dFiXsy,iaJInc,"}/*!sc*/
+.cSaubK{display:inline-block;vertical-align:middle;width:calc(100% - 38px);overflow:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g105[id="sc-eGYTEj"]{content:"cSaubK,"}/*!sc*/
+.fCwnUs{font-size:0.8em;margin-top:10px;text-align:center;position:fixed;width:260px;bottom:0;background:#fafafa;}/*!sc*/
+.fCwnUs a,.fCwnUs a:visited,.fCwnUs a:hover{color:#333333!important;padding:5px 0;border-top:1px solid #e1e1e1;text-decoration:none;display:flex;align-items:center;justify-content:center;}/*!sc*/
+.fCwnUs img{width:15px;margin-right:5px;}/*!sc*/
+@media screen and (max-width: 50rem){.fCwnUs{width:100%;}}/*!sc*/
+data-styled.g106[id="sc-hAAvJQ"]{content:"fCwnUs,"}/*!sc*/
+.khpfQS{cursor:pointer;position:relative;margin-bottom:5px;}/*!sc*/
+data-styled.g112[id="sc-fWAPNx"]{content:"khpfQS,"}/*!sc*/
+.bbmLxS{font-family:Courier,monospace;margin-left:10px;flex:1;overflow-x:hidden;text-overflow:ellipsis;}/*!sc*/
+data-styled.g113[id="sc-EtEIQ"]{content:"bbmLxS,"}/*!sc*/
+.ipoCVT{outline:0;color:inherit;width:100%;text-align:left;cursor:pointer;padding:10px 30px 10px 20px;border-radius:4px 4px 0 0;background-color:#11171a;display:flex;white-space:nowrap;align-items:center;border:1px solid transparent;border-bottom:0;transition:border-color 0.25s ease;}/*!sc*/
+.ipoCVT ..sc-EtEIQ{color:#ffffff;}/*!sc*/
+.ipoCVT:focus{box-shadow:inset 0 2px 2px rgba(0, 0, 0, 0.45),0 2px 0 rgba(128, 128, 128, 0.25);}/*!sc*/
+data-styled.g114[id="sc-jWwKpf"]{content:"ipoCVT,"}/*!sc*/
+.HSmMH{font-size:0.929em;line-height:20px;background-color:#186FAF;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+.gfXFvh{font-size:0.929em;line-height:20px;background-color:#2F8132;color:#ffffff;padding:3px 10px;text-transform:uppercase;font-family:Montserrat,sans-serif;margin:0;}/*!sc*/
+data-styled.g115[id="sc-eEpzky"]{content:"HSmMH,gfXFvh,"}/*!sc*/
+.FFJM{position:absolute;width:100%;z-index:100;background:#fafafa;color:#263238;box-sizing:border-box;box-shadow:0 0 6px rgba(0, 0, 0, 0.33);overflow:hidden;border-bottom-left-radius:4px;border-bottom-right-radius:4px;transition:all 0.25s ease;visibility:hidden;transform:translateY(-50%) scaleY(0);}/*!sc*/
+data-styled.g116[id="sc-fmJzqh"]{content:"FFJM,"}/*!sc*/
+.bHBKJr{padding:10px;}/*!sc*/
+data-styled.g117[id="sc-ljXXKw"]{content:"bHBKJr,"}/*!sc*/
+.gcPmSi{padding:5px;border:1px solid #ccc;background:#fff;word-break:break-all;color:#32329f;}/*!sc*/
+.gcPmSi >span{color:#333333;}/*!sc*/
+data-styled.g118[id="sc-jmFtRP"]{content:"gcPmSi,"}/*!sc*/
+.gWJbcm{text-transform:lowercase;margin-left:0;line-height:1.5em;}/*!sc*/
+data-styled.g119[id="sc-dUyiNi"]{content:"gWJbcm,"}/*!sc*/
+.exvOou{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#1d8127;background-color:rgba(29,129,39,0.07);}/*!sc*/
+.exvOou:focus{outline:auto #1d8127;}/*!sc*/
+.dFirrQ{display:block;border:0;width:100%;text-align:left;padding:10px;border-radius:2px;margin-bottom:4px;line-height:1.5em;cursor:pointer;color:#d41f1c;background-color:rgba(212,31,28,0.07);}/*!sc*/
+.dFirrQ:focus{outline:auto #d41f1c;}/*!sc*/
+data-styled.g121[id="sc-cazgaA"]{content:"exvOou,dFirrQ,"}/*!sc*/
+.hTzuBP{vertical-align:top;}/*!sc*/
+data-styled.g124[id="sc-fWrozE"]{content:"hTzuBP,"}/*!sc*/
+.cZAFVa{font-size:1.3em;padding:0.2em 0;margin:3em 0 1.1em;color:#333333;font-weight:normal;}/*!sc*/
+data-styled.g125[id="sc-fHRCPF"]{content:"cZAFVa,"}/*!sc*/
+.heTWAK{margin-bottom:30px;}/*!sc*/
+data-styled.g130[id="sc-iFEEnu"]{content:"heTWAK,"}/*!sc*/
+.cSRqTb{user-select:none;width:20px;height:20px;align-self:center;display:flex;flex-direction:column;color:#32329f;}/*!sc*/
+data-styled.g131[id="sc-ireSDv"]{content:"cSRqTb,"}/*!sc*/
+.SmgbH{width:260px;background-color:#fafafa;overflow:hidden;display:flex;flex-direction:column;backface-visibility:hidden;height:100vh;position:sticky;position:-webkit-sticky;top:0;}/*!sc*/
+@media screen and (max-width: 50rem){.SmgbH{position:fixed;z-index:20;width:100%;background:#fafafa;display:none;}}/*!sc*/
+@media print{.SmgbH{display:none;}}/*!sc*/
+data-styled.g132[id="sc-eVIgCb"]{content:"SmgbH,"}/*!sc*/
+.NpeAP{outline:none;user-select:none;background-color:#f2f2f2;color:#32329f;display:none;cursor:pointer;position:fixed;right:20px;z-index:100;border-radius:50%;box-shadow:0 0 20px rgba(0, 0, 0, 0.3);bottom:44px;width:60px;height:60px;padding:0 20px;}/*!sc*/
+@media screen and (max-width: 50rem){.NpeAP{display:flex;}}/*!sc*/
+.NpeAP svg{color:#0065FB;}/*!sc*/
+@media print{.NpeAP{display:none;}}/*!sc*/
+data-styled.g133[id="sc-kSWEWq"]{content:"NpeAP,"}/*!sc*/
+.iVAPSv{font-family:Roboto,sans-serif;font-size:14px;font-weight:400;line-height:1.5em;color:#333333;display:flex;position:relative;text-align:left;-webkit-font-smoothing:antialiased;font-smoothing:antialiased;text-rendering:optimizeSpeed!important;tap-highlight-color:rgba(0, 0, 0, 0);text-size-adjust:100%;}/*!sc*/
+.iVAPSv *{box-sizing:border-box;-webkit-tap-highlight-color:rgba(255, 255, 255, 0);}/*!sc*/
+data-styled.g134[id="sc-dvoNbV"]{content:"iVAPSv,"}/*!sc*/
+.hUkysm{z-index:1;position:relative;overflow:hidden;width:calc(100% - 260px);contain:layout;}/*!sc*/
+@media print,screen and (max-width: 50rem){.hUkysm{width:100%;}}/*!sc*/
+data-styled.g135[id="sc-jsDlwk"]{content:"hUkysm,"}/*!sc*/
+.fFuVJa{background:#263238;position:absolute;top:0;bottom:0;right:0;width:calc((100% - 260px) * 0.4);}/*!sc*/
+@media print,screen and (max-width: 75rem){.fFuVJa{display:none;}}/*!sc*/
+data-styled.g136[id="sc-elQQeL"]{content:"fFuVJa,"}/*!sc*/
+.jubpSa{padding:5px 0;}/*!sc*/
+data-styled.g137[id="sc-kjfoza"]{content:"jubpSa,"}/*!sc*/
+.iCpbPF{width:calc(100% - 40px);box-sizing:border-box;margin:0 20px;padding:5px 10px 5px 20px;border:0;border-bottom:1px solid #e1e1e1;font-family:Roboto,sans-serif;font-weight:bold;font-size:13px;color:#333333;background-color:transparent;outline:none;}/*!sc*/
+data-styled.g138[id="sc-cLxwEF"]{content:"iCpbPF,"}/*!sc*/
+.faArlL{position:absolute;left:20px;height:1.8em;width:0.9em;}/*!sc*/
+.faArlL path{fill:#333333;}/*!sc*/
+data-styled.g139[id="sc-iILUYU"]{content:"faArlL,"}/*!sc*/
+</style>
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+</head>
+
+<body>
+  
+      <div id="redoc"><div class="sc-dvoNbV iVAPSv redoc-wrap"><div class="sc-eVIgCb SmgbH menu-content" style="top:0px;height:calc(100vh - 0px)"><div role="search" class="sc-kjfoza jubpSa"><svg class="sc-iILUYU faArlL search-icon" version="1.1" viewBox="0 0 1000 1000" x="0px" xmlns="http://www.w3.org/2000/svg" y="0px"><path d="M968.2,849.4L667.3,549c83.9-136.5,66.7-317.4-51.7-435.6C477.1-25,252.5-25,113.9,113.4c-138.5,138.3-138.5,362.6,0,501C219.2,730.1,413.2,743,547.6,666.5l301.9,301.4c43.6,43.6,76.9,14.9,104.2-12.4C981,928.3,1011.8,893,968.2,849.4z M524.5,522c-88.9,88.7-233,88.7-321.8,0c-88.9-88.7-88.9-232.6,0-321.3c88.9-88.7,233-88.7,321.8,0C613.4,289.4,613.4,433.3,524.5,522z"></path></svg><input placeholder="Search..." aria-label="Search" type="text" class="sc-cLxwEF iCpbPF search-input" value=""/></div><div class="sc-kLTWBk bAYqfR scrollbar-container undefined"><ul role="menu" class="sc-ikrMhg fGhESw"><li tabindex="0" depth="1" data-item-id="tag/sagas" role="menuitem" class="sc-tRtYB ePUBuw"><label class="sc-bidCnS dFiXsy -depth1"><span width="calc(100% - 38px)" title="sagas" class="sc-eGYTEj cSaubK">sagas</span><svg class="sc-eoeTJ hywULj" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></label><ul class="sc-ikrMhg jmXYcV"><li tabindex="0" depth="2" data-item-id="tag/sagas/operation/startCreateEventWithStands" role="menuitem" class="sc-tRtYB ePUBuw"><label class="sc-bidCnS iaJInc -depth2"><span type="post" class="sc-Wunit jZkByO operation-type post">post</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eGYTEj cSaubK">Avvia la saga &quot;Crea evento con cantine&quot;</span></label></li><li tabindex="0" depth="2" data-item-id="tag/sagas/operation/getSaga" role="menuitem" class="sc-tRtYB ePUBuw"><label class="sc-bidCnS iaJInc -depth2"><span type="get" class="sc-Wunit jZkByO operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eGYTEj cSaubK">Dettaglio di una saga (stato + step + partecipazioni)</span></label></li><li tabindex="0" depth="2" data-item-id="tag/sagas/operation/listSagas" role="menuitem" class="sc-tRtYB ePUBuw"><label class="sc-bidCnS iaJInc -depth2"><span type="get" class="sc-Wunit jZkByO operation-type get">get</span><span tabindex="0" width="calc(100% - 38px)" class="sc-eGYTEj cSaubK">Elenca tutte le saga eseguite</span></label></li></ul></li></ul><div class="sc-hAAvJQ fCwnUs"><a target="_blank" rel="noopener noreferrer" href="https://redocly.com/redoc/">API docs by Redocly</a></div></div></div><div class="sc-kSWEWq NpeAP"><div class="sc-ireSDv cSRqTb"><svg class="" style="transform:translate(2px, -4px) rotate(180deg);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg><svg class="" style="transform:translate(2px, 4px);transition:transform 0.2s ease" viewBox="0 0 926.23699 573.74994" version="1.1" x="0px" y="0px" width="15" height="15"><g transform="translate(904.92214,-879.1482)"><path d="
+          m -673.67664,1221.6502 -231.2455,-231.24803 55.6165,
+          -55.627 c 30.5891,-30.59485 56.1806,-55.627 56.8701,-55.627 0.6894,
+          0 79.8637,78.60862 175.9427,174.68583 l 174.6892,174.6858 174.6892,
+          -174.6858 c 96.079,-96.07721 175.253196,-174.68583 175.942696,
+          -174.68583 0.6895,0 26.281,25.03215 56.8701,
+          55.627 l 55.6165,55.627 -231.245496,231.24803 c -127.185,127.1864
+          -231.5279,231.248 -231.873,231.248 -0.3451,0 -104.688,
+          -104.0616 -231.873,-231.248 z
+        " fill="currentColor"></path></g></svg></div></div><div class="sc-jsDlwk hUkysm api-content"><div class="sc-eDgbZQ iPIKIh"><div class="sc-iBIXdp cSxdvF"><div class="sc-hLllbt eDaeie api-info"><h1 class="sc-ftDObM sc-csnpUd dgPnBP PjloV">San Martino — Sagas API<!-- --> <span>(<!-- -->1.0.0<!-- -->)</span></h1><p>Download OpenAPI specification<!-- -->:</p><div class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw"></div><div data-role="redoc-summary" html="" class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw"></div><div data-role="redoc-description" html="&lt;p&gt;Orchestratore di saga per coordinare transazioni distribuite tra
+events-service e stands-service.&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw"><p>Orchestratore di saga per coordinare transazioni distribuite tra
+events-service e stands-service.</p>
+</div></div></div></div><div id="tag/sagas" data-section-id="tag/sagas" class="sc-eDgbZQ iPIKIh"><div class="sc-iBIXdp cSxdvF"><div class="sc-hLllbt eDaeie"><h2 class="sc-pilFg iaWPiZ"><a class="sc-csfbns iCaXBU" href="#tag/sagas" aria-label="tag/sagas"></a>sagas</h2></div></div><div class="sc-hLllbt ctlIhe"><div class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw redoc-markdown " html="&lt;p&gt;Esecuzione e stato delle saga&lt;/p&gt;
+"><p>Esecuzione e stato delle saga</p>
+</div></div></div><div id="tag/sagas/operation/startCreateEventWithStands" data-section-id="tag/sagas/operation/startCreateEventWithStands" class="sc-eDgbZQ cTnTji"><div data-section-id="operation/startCreateEventWithStands" id="operation/startCreateEventWithStands" class="sc-iBIXdp cSxdvF"><div class="sc-hLllbt eDaeie"><h2 class="sc-pilFg iaWPiZ"><a class="sc-csfbns iCaXBU" href="#tag/sagas/operation/startCreateEventWithStands" aria-label="tag/sagas/operation/startCreateEventWithStands"></a>Avvia la saga &quot;Crea evento con cantine&quot;<!-- --> </h2><div class="sc-iFEEnu heTWAK"><div html="&lt;p&gt;Coordina la creazione di un Event in events-service, la validazione
+delle cantine partecipanti in stands-service, e la registrazione
+locale delle partecipazioni. Compensa (delete event) se la
+validazione cantine fallisce.&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw"><p>Coordina la creazione di un Event in events-service, la validazione
+delle cantine partecipanti in stands-service, e la registrazione
+locale delle partecipazioni. Compensa (delete event) se la
+validazione cantine fallisce.</p>
+</div></div><h5 class="sc-ipUpyX bQgvAW">Request Body schema: <span class="sc-gXLJnt kVhPoT">application/json</span><div class="sc-gSsQAz sc-eJTLNO sc-dUyiNi bIRWpU cDdUTG gWJbcm">required</div></h5><div html="" class="sc-iIXgSY sc-cBUbKg bFZcpw fjsgEw"></div><table class="sc-hIjUsD gxcrxl"><tbody><tr class=""><td class="sc-hBhkkI sc-fFneKr sc-jgjMUi bCCqhL ieDrqd cgwPqz" kind="field" title="event"><span class="sc-idHmUl dWMWLd"></span><button aria-label="expand event"><span class="property-name">event</span><svg class="sc-eoeTJ jwbVPj" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div class="sc-gSsQAz sc-eJTLNO bIRWpU cDdUTG">required</div></td><td class="sc-bjvxhe hKUbIp"><div><div><span class="sc-gSsQAz sc-lbFyRs bIRWpU eYGSYL"></span><span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE">object</span><span class="sc-gSsQAz sc-jfLtrb bIRWpU fcblqy"> (<!-- -->EventInput<!-- -->) </span></div> <div><div html="" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"></div></div></div></td></tr><tr class="last "><td kind="field" title="standIds" class="sc-hBhkkI sc-fFneKr bCCqhL ieDrqd"><span class="sc-idHmUl dWMWLd"></span><span class="property-name">standIds</span><div class="sc-gSsQAz sc-eJTLNO bIRWpU cDdUTG">required</div></td><td class="sc-bjvxhe hKUbIp"><div><div><span class="sc-gSsQAz sc-lbFyRs bIRWpU eYGSYL">Array of </span><span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE">strings</span><span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE"> <!-- -->&lt;<!-- -->uuid<!-- -->&gt;<!-- --> </span><span class="sc-gSsQAz sc-lbFyRs sc-ZGwKq bIRWpU eYGSYL fQbQTQ">[ items<span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE"> &lt;<!-- -->uuid<!-- --> &gt;</span> ]</span></div> <div><div html="" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"></div></div></div></td></tr></tbody></table><div><h3 class="sc-fHRCPF cZAFVa">Responses</h3><div><button class="sc-cazgaA exvOou"><svg class="sc-eoeTJ laUMkN" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWrozE hTzuBP">200<!-- --> </strong><div html="&lt;p&gt;Saga completata con successo&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg sc-cjxXbH bFZcpw dvzdQy fsyARd"><p>Saga completata con successo</p>
+</div></button></div><div><button class="sc-cazgaA dFirrQ"><svg class="sc-eoeTJ eFzWbV" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWrozE hTzuBP">422<!-- --> </strong><div html="&lt;p&gt;Saga compensata (uno step ha fallito ed e&amp;#39; stato rollbackato)&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg sc-cjxXbH bFZcpw dvzdQy fsyARd"><p>Saga compensata (uno step ha fallito ed e&#39; stato rollbackato)</p>
+</div></button></div></div></div><div class="sc-jTkVfb sc-gLfMdy jtFuxD iXwyZf"><div class="sc-fWAPNx khpfQS"><button class="sc-jWwKpf ipoCVT"><span type="post" class="sc-eEpzky HSmMH http-verb post">post</span><span class="sc-EtEIQ bbmLxS">/v1/sagas/create-event-with-stands</span><svg class="sc-eoeTJ iVMpnF" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmJzqh FFJM"><div class="sc-ljXXKw bHBKJr"><div html="&lt;p&gt;Local dev&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"><p>Local dev</p>
+</div><div tabindex="0" role="button"><div class="sc-jmFtRP gcPmSi"><span>http://localhost:8083</span>/v1/sagas/create-event-with-stands</div></div></div></div></div><div><h3 class="sc-kDLlSG dRovbT"> <!-- -->Request samples<!-- --> </h3><div class="sc-cxhVIO eLQqJo" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="react-tabs__tab react-tabs__tab--selected" role="tab" id="tab_R_4kmq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4kmq_0" tabindex="0" data-rttab="true">Payload</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4kmq_0" aria-labelledby="tab_R_4kmq_0"><div><div class="sc-cONRau eFnwLI"><span class="sc-bBPDSh jvAXnC">Content type</span><div class="sc-dPGAlQ gSTGKV">application/json</div></div><div class="sc-hTlzLV btNvSR"><div class="sc-cUoYtZ cFqGbU"><div class="sc-ghUFvp kTbBXK"><button><div class="sc-jdbYXq lnuoCU">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div class="sc-iIXgSY bFZcpw sc-jNTapI bsKEfU"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"event"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"place"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"startDate"</span>: <span class="token string">&quot;2019-08-24&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"endDate"</span>: <span class="token string">&quot;2019-08-24&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"description"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"it"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"en"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">}</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"standIds"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><span class="token string">&quot;497f6eca-6276-4993-bfeb-53cbbbba6f08&quot;</span></div></li></ul><span class="token punctuation">]</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div></div></div><div><h3 class="sc-kDLlSG dRovbT"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxhVIO eLQqJo" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4smq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4smq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4smq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4smq_1" data-rttab="true">422</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4smq_0" aria-labelledby="tab_R_4smq_0"><div><div class="sc-cONRau eFnwLI"><span class="sc-bBPDSh jvAXnC">Content type</span><div class="sc-dPGAlQ gSTGKV">application/json</div></div><div class="sc-hTlzLV btNvSR"><div class="sc-cUoYtZ cFqGbU"><div class="sc-ghUFvp kTbBXK"><button><div class="sc-jdbYXq lnuoCU">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div class="sc-iIXgSY bFZcpw sc-jNTapI bsKEfU"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token string">&quot;497f6eca-6276-4993-bfeb-53cbbbba6f08&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"type"</span>: <span class="token string">&quot;CreateEventWithStands&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"status"</span>: <span class="token string">&quot;STARTED&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"createdEventId"</span>: <span class="token string">&quot;c87b8241-e344-4c89-9730-ef9c80073dfa&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"steps"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"stepOrder"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;PENDING&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"participations"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"eventId"</span>: <span class="token string">&quot;d6703cc8-9e79-415d-ac03-a4dc7f6ab43c&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"standId"</span>: <span class="token string">&quot;df4572c5-16cb-4cdc-ab06-a430571ae569&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4smq_1" aria-labelledby="tab_R_4smq_1"></div></div></div></div></div></div><div id="tag/sagas/operation/getSaga" data-section-id="tag/sagas/operation/getSaga" class="sc-eDgbZQ cTnTji"><div data-section-id="operation/getSaga" id="operation/getSaga" class="sc-iBIXdp cSxdvF"><div class="sc-hLllbt eDaeie"><h2 class="sc-pilFg iaWPiZ"><a class="sc-csfbns iCaXBU" href="#tag/sagas/operation/getSaga" aria-label="tag/sagas/operation/getSaga"></a>Dettaglio di una saga (stato + step + partecipazioni)<!-- --> </h2><div><h5 class="sc-ipUpyX bQgvAW">path<!-- --> Parameters</h5><table class="sc-hIjUsD gxcrxl"><tbody><tr class="last "><td kind="field" title="id" class="sc-hBhkkI sc-fFneKr bCCqhL ieDrqd"><span class="sc-idHmUl dWMWLd"></span><span class="property-name">id</span><div class="sc-gSsQAz sc-eJTLNO bIRWpU cDdUTG">required</div></td><td class="sc-bjvxhe hKUbIp"><div><div><span class="sc-gSsQAz sc-lbFyRs bIRWpU eYGSYL"></span><span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE">string</span><span class="sc-gSsQAz sc-iNOCxJ bIRWpU cvvLCE"> <!-- -->&lt;<!-- -->uuid<!-- -->&gt;<!-- --> </span></div> <div><div html="" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"></div></div></div></td></tr></tbody></table></div><div><h3 class="sc-fHRCPF cZAFVa">Responses</h3><div><button class="sc-cazgaA exvOou"><svg class="sc-eoeTJ laUMkN" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWrozE hTzuBP">200<!-- --> </strong><div html="&lt;p&gt;Saga trovata&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg sc-cjxXbH bFZcpw dvzdQy fsyARd"><p>Saga trovata</p>
+</div></button></div><div><button class="sc-cazgaA dFirrQ"><svg class="sc-eoeTJ eFzWbV" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWrozE hTzuBP">404<!-- --> </strong><div html="&lt;p&gt;Risorsa non trovata&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg sc-cjxXbH bFZcpw dvzdQy fsyARd"><p>Risorsa non trovata</p>
+</div></button></div></div></div><div class="sc-jTkVfb sc-gLfMdy jtFuxD iXwyZf"><div class="sc-fWAPNx khpfQS"><button class="sc-jWwKpf ipoCVT"><span type="get" class="sc-eEpzky gfXFvh http-verb get">get</span><span class="sc-EtEIQ bbmLxS">/v1/sagas/{id}</span><svg class="sc-eoeTJ iVMpnF" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmJzqh FFJM"><div class="sc-ljXXKw bHBKJr"><div html="&lt;p&gt;Local dev&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"><p>Local dev</p>
+</div><div tabindex="0" role="button"><div class="sc-jmFtRP gcPmSi"><span>http://localhost:8083</span>/v1/sagas/{id}</div></div></div></div></div><div><h3 class="sc-kDLlSG dRovbT"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxhVIO eLQqJo" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4sqq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4sqq_0" tabindex="0" data-rttab="true">200</li><li class="tab-error" role="tab" id="tab_R_4sqq_1" aria-selected="false" aria-disabled="false" aria-controls="panel_R_4sqq_1" data-rttab="true">404</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4sqq_0" aria-labelledby="tab_R_4sqq_0"><div><div class="sc-cONRau eFnwLI"><span class="sc-bBPDSh jvAXnC">Content type</span><div class="sc-dPGAlQ gSTGKV">application/json</div></div><div class="sc-hTlzLV btNvSR"><div class="sc-cUoYtZ cFqGbU"><div class="sc-ghUFvp kTbBXK"><button><div class="sc-jdbYXq lnuoCU">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div class="sc-iIXgSY bFZcpw sc-jNTapI bsKEfU"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable "><span class="property token string">"id"</span>: <span class="token string">&quot;497f6eca-6276-4993-bfeb-53cbbbba6f08&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"type"</span>: <span class="token string">&quot;CreateEventWithStands&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"status"</span>: <span class="token string">&quot;STARTED&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"createdEventId"</span>: <span class="token string">&quot;c87b8241-e344-4c89-9730-ef9c80073dfa&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"steps"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"stepOrder"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;PENDING&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"participations"</span>: <button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"eventId"</span>: <span class="token string">&quot;d6703cc8-9e79-415d-ac03-a4dc7f6ab43c&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"standId"</span>: <span class="token string">&quot;df4572c5-16cb-4cdc-ab06-a430571ae569&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable "><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></code></div></div></div></div></div></div><div class="react-tabs__tab-panel" role="tabpanel" id="panel_R_4sqq_1" aria-labelledby="tab_R_4sqq_1"></div></div></div></div></div></div><div id="tag/sagas/operation/listSagas" data-section-id="tag/sagas/operation/listSagas" class="sc-eDgbZQ cTnTji"><div data-section-id="operation/listSagas" id="operation/listSagas" class="sc-iBIXdp cSxdvF"><div class="sc-hLllbt eDaeie"><h2 class="sc-pilFg iaWPiZ"><a class="sc-csfbns iCaXBU" href="#tag/sagas/operation/listSagas" aria-label="tag/sagas/operation/listSagas"></a>Elenca tutte le saga eseguite<!-- --> </h2><div><h3 class="sc-fHRCPF cZAFVa">Responses</h3><div><button class="sc-cazgaA exvOou"><svg class="sc-eoeTJ laUMkN" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg><strong class="sc-fWrozE hTzuBP">200<!-- --> </strong><div html="&lt;p&gt;Lista saga&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg sc-cjxXbH bFZcpw dvzdQy fsyARd"><p>Lista saga</p>
+</div></button></div></div></div><div class="sc-jTkVfb sc-gLfMdy jtFuxD iXwyZf"><div class="sc-fWAPNx khpfQS"><button class="sc-jWwKpf ipoCVT"><span type="get" class="sc-eEpzky gfXFvh http-verb get">get</span><span class="sc-EtEIQ bbmLxS">/v1/sagas</span><svg class="sc-eoeTJ iVMpnF" style="margin-right:-25px" version="1.1" viewBox="0 0 24 24" x="0" xmlns="http://www.w3.org/2000/svg" y="0" aria-hidden="true"><polygon points="17.3 8.3 12 13.6 6.7 8.3 5.3 9.7 12 16.4 18.7 9.7 "></polygon></svg></button><div aria-hidden="true" class="sc-fmJzqh FFJM"><div class="sc-ljXXKw bHBKJr"><div html="&lt;p&gt;Local dev&lt;/p&gt;
+" class="sc-iIXgSY sc-cBUbKg bFZcpw bSnquG"><p>Local dev</p>
+</div><div tabindex="0" role="button"><div class="sc-jmFtRP gcPmSi"><span>http://localhost:8083</span>/v1/sagas</div></div></div></div></div><div><h3 class="sc-kDLlSG dRovbT"> <!-- -->Response samples<!-- --> </h3><div class="sc-cxhVIO eLQqJo" data-rttabs="true"><ul class="react-tabs__tab-list" role="tablist"><li class="tab-success react-tabs__tab--selected" role="tab" id="tab_R_4suq_0" aria-selected="true" aria-disabled="false" aria-controls="panel_R_4suq_0" tabindex="0" data-rttab="true">200</li></ul><div class="react-tabs__tab-panel react-tabs__tab-panel--selected" role="tabpanel" id="panel_R_4suq_0" aria-labelledby="tab_R_4suq_0"><div><div class="sc-cONRau eFnwLI"><span class="sc-bBPDSh jvAXnC">Content type</span><div class="sc-dPGAlQ gSTGKV">application/json</div></div><div class="sc-hTlzLV btNvSR"><div class="sc-cUoYtZ cFqGbU"><div class="sc-ghUFvp kTbBXK"><button><div class="sc-jdbYXq lnuoCU">Copy</div></button><button> Expand all </button><button> Collapse all </button></div><div class="sc-iIXgSY bFZcpw sc-jNTapI bsKEfU"><div class="redoc-json"><code><button class="collapser" aria-label="collapse"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable "><button class="collapser" aria-label="collapse"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"id"</span>: <span class="token string">&quot;497f6eca-6276-4993-bfeb-53cbbbba6f08&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"type"</span>: <span class="token string">&quot;CreateEventWithStands&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;STARTED&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"createdEventId"</span>: <span class="token string">&quot;c87b8241-e344-4c89-9730-ef9c80073dfa&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"steps"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"name"</span>: <span class="token string">&quot;string&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"stepOrder"</span>: <span class="token number">0</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"status"</span>: <span class="token string">&quot;PENDING&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"startedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"finishedAt"</span>: <span class="token string">&quot;2019-08-24T14:15:22Z&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"participations"</span>: <button class="collapser" aria-label="expand"></button><span class="token punctuation">[</span><span class="ellipsis"></span><ul class="array collapsible"><li><div class="hoverable collapsed"><button class="collapser" aria-label="expand"></button><span class="token punctuation">{</span><span class="ellipsis"></span><ul class="obj collapsible"><li><div class="hoverable collapsed"><span class="property token string">"eventId"</span>: <span class="token string">&quot;d6703cc8-9e79-415d-ac03-a4dc7f6ab43c&quot;</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"standId"</span>: <span class="token string">&quot;df4572c5-16cb-4cdc-ab06-a430571ae569&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span><span class="token punctuation">,</span></div></li><li><div class="hoverable collapsed"><span class="property token string">"message"</span>: <span class="token string">&quot;string&quot;</span></div></li></ul><span class="token punctuation">}</span></div></li></ul><span class="token punctuation">]</span></code></div></div></div></div></div></div></div></div></div></div></div></div><div class="sc-elQQeL fFuVJa"></div></div></div>
+      <script>
+      const __redoc_state = {"menu":{"activeItemIdx":-1},"spec":{"data":{"openapi":"3.0.3","info":{"title":"San Martino — Sagas API","description":"Orchestratore di saga per coordinare transazioni distribuite tra\nevents-service e stands-service.\n","version":"1.0.0"},"servers":[{"url":"http://localhost:8083","description":"Local dev"}],"tags":[{"name":"sagas","description":"Esecuzione e stato delle saga"}],"paths":{"/v1/sagas/create-event-with-stands":{"post":{"tags":["sagas"],"summary":"Avvia la saga \"Crea evento con cantine\"","description":"Coordina la creazione di un Event in events-service, la validazione\ndelle cantine partecipanti in stands-service, e la registrazione\nlocale delle partecipazioni. Compensa (delete event) se la\nvalidazione cantine fallisce.\n","operationId":"startCreateEventWithStands","requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CreateEventWithStandsRequest"}}}},"responses":{"200":{"description":"Saga completata con successo","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SagaInstance"}}}},"422":{"description":"Saga compensata (uno step ha fallito ed e' stato rollbackato)","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SagaInstance"}}}}}}},"/v1/sagas/{id}":{"parameters":[{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"get":{"tags":["sagas"],"summary":"Dettaglio di una saga (stato + step + partecipazioni)","operationId":"getSaga","responses":{"200":{"description":"Saga trovata","content":{"application/json":{"schema":{"$ref":"#/components/schemas/SagaInstance"}}}},"404":{"$ref":"#/components/responses/NotFound"}}}},"/v1/sagas":{"get":{"tags":["sagas"],"summary":"Elenca tutte le saga eseguite","operationId":"listSagas","responses":{"200":{"description":"Lista saga","content":{"application/json":{"schema":{"type":"array","items":{"$ref":"#/components/schemas/SagaInstance"}}}}}}}}},"components":{"schemas":{"SagaStatus":{"type":"string","enum":["STARTED","COMPLETED","FAILED","COMPENSATING","COMPENSATED"]},"SagaStepStatus":{"type":"string","enum":["PENDING","COMPLETED","FAILED","COMPENSATED"]},"LocalizedText":{"type":"object","required":["it","en"],"properties":{"it":{"type":"string"},"en":{"type":"string"}}},"EventInput":{"type":"object","required":["name","place","startDate","endDate","description"],"properties":{"name":{"type":"string"},"place":{"type":"string"},"startDate":{"type":"string","format":"date"},"endDate":{"type":"string","format":"date"},"description":{"$ref":"#/components/schemas/LocalizedText"}}},"CreateEventWithStandsRequest":{"type":"object","required":["event","standIds"],"properties":{"event":{"$ref":"#/components/schemas/EventInput"},"standIds":{"type":"array","items":{"type":"string","format":"uuid"}}}},"SagaStep":{"type":"object","required":["name","stepOrder","status"],"properties":{"name":{"type":"string"},"stepOrder":{"type":"integer"},"status":{"$ref":"#/components/schemas/SagaStepStatus"},"startedAt":{"type":"string","format":"date-time"},"finishedAt":{"type":"string","format":"date-time"},"message":{"type":"string"}}},"Participation":{"type":"object","required":["eventId","standId"],"properties":{"eventId":{"type":"string","format":"uuid"},"standId":{"type":"string","format":"uuid"}}},"SagaInstance":{"type":"object","required":["id","type","status","steps","participations"],"properties":{"id":{"type":"string","format":"uuid"},"type":{"type":"string","example":"CreateEventWithStands"},"status":{"$ref":"#/components/schemas/SagaStatus"},"createdEventId":{"type":"string","format":"uuid"},"startedAt":{"type":"string","format":"date-time"},"finishedAt":{"type":"string","format":"date-time"},"steps":{"type":"array","items":{"$ref":"#/components/schemas/SagaStep"}},"participations":{"type":"array","items":{"$ref":"#/components/schemas/Participation"}},"message":{"type":"string"}}},"Problem":{"type":"object","properties":{"type":{"type":"string"},"title":{"type":"string"},"status":{"type":"integer"},"detail":{"type":"string"}}}},"responses":{"NotFound":{"description":"Risorsa non trovata","content":{"application/problem+json":{"schema":{"$ref":"#/components/schemas/Problem"}}}}}}}},"searchIndex":{"store":["tag/sagas","tag/sagas/operation/startCreateEventWithStands","tag/sagas/operation/getSaga","tag/sagas/operation/listSagas"],"index":{"version":"2.3.9","fields":["title","description"],"fieldVectors":[["title/0",[0,0.131]],["description/0",[0,0.106,1,1.46,2,0.841,3,0.841,4,0.841]],["title/1",[0,0.078,5,1.083,6,0.624,7,1.083,8,1.083,9,1.083,10,0.624]],["description/1",[2,0.365,4,0.589,6,0.85,10,0.589,11,0.634,12,0.634,13,0.365,14,0.634,15,1.023,16,0.634,17,1.023,18,0.634,19,0.634,20,0.634,21,0.634,22,0.365,23,0.634,24,0.634,25,0.634,26,0.634,27,0.634]],["title/2",[0,0.069,3,0.55,13,0.55,22,0.55,28,0.955,29,0.955,30,1.404,31,0.955]],["description/2",[32,1.888]],["title/3",[0,0.09,33,1.25,34,1.25,35,1.25,36,1.25]],["description/3",[37,1.888]]],"invertedIndex":[["",{"_index":30,"title":{"2":{}},"description":{}}],["avvia",{"_index":5,"title":{"1":{}},"description":{}}],["cantin",{"_index":10,"title":{"1":{}},"description":{"1":{}}}],["compensa",{"_index":23,"title":{},"description":{"1":{}}}],["con",{"_index":9,"title":{"1":{}},"description":{}}],["coordina",{"_index":11,"title":{},"description":{"1":{}}}],["crea",{"_index":7,"title":{"1":{}},"description":{}}],["creazion",{"_index":12,"title":{},"description":{"1":{}}}],["delet",{"_index":24,"title":{},"description":{"1":{}}}],["dell",{"_index":4,"title":{},"description":{"0":{},"1":{}}}],["dettaglio",{"_index":28,"title":{"2":{}},"description":{}}],["di",{"_index":13,"title":{"2":{}},"description":{"1":{}}}],["e",{"_index":2,"title":{},"description":{"0":{},"1":{}}}],["elenca",{"_index":33,"title":{"3":{}},"description":{}}],["esecuzion",{"_index":1,"title":{},"description":{"0":{}}}],["eseguit",{"_index":36,"title":{"3":{}},"description":{}}],["event",{"_index":15,"title":{},"description":{"1":{}}}],["evento",{"_index":8,"title":{"1":{}},"description":{}}],["events-servic",{"_index":16,"title":{},"description":{"1":{}}}],["fallisc",{"_index":26,"title":{},"description":{"1":{}}}],["la",{"_index":6,"title":{"1":{}},"description":{"1":{}}}],["le",{"_index":35,"title":{"3":{}},"description":{}}],["local",{"_index":21,"title":{},"description":{"1":{}}}],["partecipanti",{"_index":18,"title":{},"description":{"1":{}}}],["partecipazioni",{"_index":22,"title":{"2":{}},"description":{"1":{}}}],["registrazion",{"_index":20,"title":{},"description":{"1":{}}}],["saga",{"_index":0,"title":{"0":{},"1":{},"2":{},"3":{}},"description":{"0":{}}}],["se",{"_index":25,"title":{},"description":{"1":{}}}],["stands-servic",{"_index":19,"title":{},"description":{"1":{}}}],["stato",{"_index":3,"title":{"2":{}},"description":{"0":{}}}],["step",{"_index":31,"title":{"2":{}},"description":{}}],["tutt",{"_index":34,"title":{"3":{}},"description":{}}],["un",{"_index":14,"title":{},"description":{"1":{}}}],["una",{"_index":29,"title":{"2":{}},"description":{}}],["v1/saga",{"_index":37,"title":{},"description":{"3":{}}}],["v1/sagas/create-event-with-stand",{"_index":27,"title":{},"description":{"1":{}}}],["v1/sagas/{id",{"_index":32,"title":{},"description":{"2":{}}}],["validazion",{"_index":17,"title":{},"description":{"1":{}}}]],"pipeline":[]}},"options":{}};
+
+      var container = document.getElementById('redoc');
+      Redoc.hydrate(__redoc_state, container);
+
+      </script>
+</body>
+
+</html>

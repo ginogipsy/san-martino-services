@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: san-martino
+    orgId: 1
+    folder: San Martino
+    type: file
+    disableDeletion: false
+    # Le dashboard sono file versionati: le modifiche fatte dalla UI vanno
+    # riportate nel file, altrimenti si perdono al riavvio del container.
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

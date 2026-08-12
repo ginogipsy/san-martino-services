@@ -54,12 +54,17 @@ springdoc:
   api-docs:
     path: /v3/api-docs
 
-logging:
-  level:
-    root: INFO
-    com.ginogipsy.sanmartino: DEBUG
-
 management:
+  metrics:
+    tags:
+      # Label comune a tutte le metriche: in Prometheus/Grafana distingue i servizi
+      # anche quando la stessa query aggrega piu' job.
+      application: ${spring.application.name}
+    distribution:
+      # Buckets sul timer delle richieste HTTP: senza istogramma Prometheus non puo'
+      # calcolare i quantili (il timer esporterebbe solo count, sum e max).
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:
@@ -67,3 +72,33 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+# --- Logging & observability ---------------------------------------------
+# L'aspect di logging (parametri, durata, esiti) e il correlation id arrivano da
+# common-observability, con i default della libreria. Le property configurabili
+# sono `sanmartino.observability.*`, documentate in docs/observability.md.
+logging:
+  level:
+    root: INFO
+    com.ginogipsy.sanmartino: DEBUG
+  # Correlation id anche sulla console, dove il formato non e' JSON.
+  pattern:
+    level: "%5p [${spring.application.name},%X{correlationId:-}]"
+  # File di log per servizio: e' la sorgente che Promtail spedisce a Loki.
+  # LOG_DIR e' relativo alla working directory del processo (IntelliJ usa la
+  # cartella del modulo, `mvnw spring-boot:run` la stessa).
+  file:
+    name: ${LOG_DIR:./logs}/${spring.application.name}.log
+  structured:
+    format:
+      # Console leggibile in sviluppo; con LOG_CONSOLE_FORMAT=ecs diventa JSON,
+      # utile quando il servizio gira in container e i log escono su stdout.
+      console: ${LOG_CONSOLE_FORMAT:}
+      # Elastic Common Schema: JSON con `log.level`, `service.name`, `message` e
+      # le chiavi MDC (correlationId, operation, durationMs, outcome) come campi.
+      file: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${LOG_SERVICE_VERSION:0.0.1}
+        environment: ${LOG_ENVIRONMENT:local}

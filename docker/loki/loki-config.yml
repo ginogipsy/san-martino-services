@@ -1,0 +1,55 @@
+# Loki — configurazione minima single-binary per lo sviluppo locale.
+# Storage su filesystem (volume `loki-data`), nessuna autenticazione, nessun cluster:
+# non è una configurazione da produzione e non pretende di esserlo.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  # A `info` Loki scrive una riga per ogni push: in locale è solo rumore.
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # I file di log dei servizi esistono già quando Promtail parte: senza questo
+  # Loki rifiuterebbe le righe più vecchie della finestra di default e i log
+  # "sparirebbero" senza un errore evidente.
+  reject_old_samples: false
+  allow_structured_metadata: true
+  # Abilita l'API `/loki/api/v1/index/volume`, cioè l'istogramma dei volumi di log
+  # sopra il pannello Logs di Grafana.
+  volume_enabled: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
+table_manager:
+  retention_deletes_enabled: false
+  retention_period: 0s
+
+analytics:
+  reporting_enabled: false
