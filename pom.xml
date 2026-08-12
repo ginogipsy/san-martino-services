@@ -14,7 +14,7 @@
 
     <groupId>com.ginogipsy.sanmartino</groupId>
     <artifactId>san-martino-services</artifactId>
-    <version>0.0.2</version>
+    <version>1.0.0</version>
     <packaging>pom</packaging>
 
     <name>San Martino — services</name>

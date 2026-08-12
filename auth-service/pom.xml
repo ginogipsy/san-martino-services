@@ -6,7 +6,7 @@
     <parent>
         <groupId>com.ginogipsy.sanmartino</groupId>
         <artifactId>san-martino-services</artifactId>
-        <version>0.0.2</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>auth-service</artifactId>
