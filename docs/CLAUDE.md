@@ -42,6 +42,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   La struttura dei sei servizi è impostata; tutti compilano (`./mvnw clean verify -DskipTests` → `BUILD SUCCESS`).
 *   **Pipeline CI/CD su GitHub Actions completata** (task #003): build & test su JDK 26, immagini OCI via Buildpacks per i sei servizi, push su GHCR limitato a `master`, rigenerazione automatica del reference OpenAPI in `docs/api/`. Analisi statica con Qodana. Dettagli in [ci-cd.md](./ci-cd.md).
 *   **Standard di codice formalizzati** in [CODING_STANDARDS.md](./CODING_STANDARDS.md); regole operative per gli agenti nel `CLAUDE.md` alla radice del repo.
+*   **Logging & observability completata** (task #004): nuovo modulo `common-observability` (aspect AOP di logging con mascheramento dei dati sensibili, correlation id in MDC, log JSON in formato ECS), metriche Micrometer/Prometheus sui sei servizi, stack Prometheus + Loki + Promtail + Grafana nel `docker-compose.yml` con data source e dashboard provisionate. Dettagli e istruzioni di prova in [observability.md](./observability.md).
 
 ### Problemi risolti
 
@@ -57,6 +58,8 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
     *   Questa è con ogni probabilità la causa dell'errore Vault al punto 2.
 
 ### Problemi noti, ancora aperti
+
+0. **Osservabilità validata solo su `events-service`.** L'aspect, il correlation id, lo scrape Prometheus e l'ingestione in Loki sono stati provati a runtime con `events-service` avviato sull'host; gli altri cinque servizi sono verificati solo in compilazione. Mancano: la propagazione del correlation id **attraverso** gateway → events/stands → saga, e la propagazione via header Kafka verso `notifications-service` (non implementata).
 
 1. **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
 2. **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).

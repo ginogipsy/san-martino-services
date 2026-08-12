@@ -3,6 +3,9 @@ target/
 *.iml
 .vscode/
 *.log
+# Log applicativi in JSON (sorgente di Promtail): scritti da logging.file.name,
+# sia in ./logs sia in <modulo>/logs a seconda della working directory.
+logs/
 
 # OS
 .DS_Store

@@ -16,6 +16,18 @@
     <description>API Gateway sincrono (Spring Cloud Gateway MVC) per il backend San Martino.</description>
 
     <dependencies>
+        <!-- Osservabilita': aspect di logging AOP + correlation id in MDC -->
+        <dependency>
+            <groupId>com.ginogipsy.sanmartino</groupId>
+            <artifactId>common-observability</artifactId>
+        </dependency>
+        <!-- Registry Prometheus: senza questo /actuator/prometheus non esiste,
+             spring-boot-starter-actuator da solo non lo porta. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-vault-config</artifactId>

@@ -1,5 +1,6 @@
 package com.ginogipsy.sanmartino.notifications.push;
 
+import com.ginogipsy.sanmartino.observability.Logged;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "sanmartino.fcm.enabled", havingValue = "false", matchIfMissing = true)
+@Logged
 public class LoggingPushNotificationSender implements PushNotificationSender {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingPushNotificationSender.class);

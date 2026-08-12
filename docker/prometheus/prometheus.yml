@@ -1,0 +1,76 @@
+# Prometheus — configurazione per lo sviluppo locale.
+#
+# I sei servizi Spring girano di norma SULL'HOST (IntelliJ o `mvnw spring-boot:run`):
+# lo dicono i secret di Vault, che puntano a `localhost:5433` e simili. Per questo i
+# target sono `host.docker.internal`, mappato a `host-gateway` nel docker-compose.yml
+# (nativo su Docker Desktop, esplicito su Linux).
+#
+# Se invece avvii i servizi come container (`docker compose up events-service ...`),
+# sostituisci l'host con il nome del servizio Compose: vedi il blocco commentato in fondo.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    environment: local
+
+scrape_configs:
+
+  # --- Servizi San Martino: un job per servizio, così la label `job` è il nome del servizio ---
+  - job_name: gateway
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  - job_name: events-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+
+  - job_name: stands-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8082']
+
+  - job_name: saga-orchestrator
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8083']
+
+  - job_name: notifications-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8084']
+
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8085']
+
+  # --- Stack di osservabilità stesso ---
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: loki
+    static_configs:
+      - targets: ['loki:3100']
+
+  - job_name: promtail
+    static_configs:
+      - targets: ['promtail:9080']
+
+# --- Variante con i servizi in container ---------------------------------
+# Sostituisce i sei job sopra quando i servizi girano dentro Compose:
+#
+#   - job_name: san-martino-containers
+#     metrics_path: /actuator/prometheus
+#     static_configs:
+#       - targets:
+#           - 'gateway:8080'
+#           - 'events-service:8081'
+#           - 'stands-service:8082'
+#           - 'saga-orchestrator:8083'
+#           - 'notifications-service:8084'
+#           - 'auth-service:8085'

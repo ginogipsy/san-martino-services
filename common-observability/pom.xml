@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.ginogipsy.sanmartino</groupId>
+        <artifactId>san-martino-services</artifactId>
+        <version>0.0.1</version>
+    </parent>
+
+    <artifactId>common-observability</artifactId>
+    <name>common-observability</name>
+    <description>Libreria condivisa: aspect AOP di logging, correlation id in MDC, log strutturati per Loki.</description>
+
+    <properties>
+        <!--
+          Questo modulo è una LIBRERIA, non un servizio: non produce immagine OCI.
+          La CI invoca `spring-boot:build-image` da riga di comando con `-pl :<service> -am`,
+          e un goal invocato da CLI viene eseguito su TUTTI i progetti del reactor.
+          Sui progetti `pom` è no-op, ma su un jar non ripacchettato fallirebbe
+          ("executable jar file required"). Da qui lo skip.
+        -->
+        <spring-boot.build-image.skip>true</spring-boot.build-image.skip>
+    </properties>
+
+    <dependencies>
+        <!-- Core Spring Boot: context, autoconfigure, SLF4J/Logback -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+        <!--
+          Boot 4 ha rinominato spring-boot-starter-aop in spring-boot-starter-aspectj.
+          Porta spring-aop + aspectjweaver, che è anche la condizione con cui
+          AopAutoConfiguration attiva @EnableAspectJAutoProxy (proxy CGLIB per
+          default): l'aspect funziona nei servizi senza altra configurazione.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aspectj</artifactId>
+        </dependency>
+
+        <!--
+          Servlet e spring-web sono `optional`: la libreria compila contro
+          OncePerRequestFilter / RestController / ClientHttpRequestInterceptor,
+          ma non li impone a chi la usa. Tutti i sei servizi li hanno già
+          (spring-boot-starter-web o spring-cloud-starter-gateway-server-webmvc);
+          i bean che li richiedono sono comunque dietro @ConditionalOnClass.
+        -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Genera META-INF/spring-configuration-metadata.json: autocompletamento IDE su sanmartino.observability.* -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Serve solo a costruire una finta entity nei test del formatter:
+             il riconoscimento a runtime avviene per nome dell'annotazione,
+             quindi la libreria non dipende da JPA. -->
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>
