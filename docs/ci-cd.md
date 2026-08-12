@@ -5,6 +5,7 @@ Due workflow in `.github/workflows/`:
 | File | Scopo |
 |---|---|
 | `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI |
+| `release.yml` | Tag, GitHub Release, Version Bump (Maven) |
 | `qodana_code_quality.yml` | analisi statica JetBrains Qodana |
 
 ## Allineamento a git flow
@@ -15,12 +16,20 @@ feature/*  ──PR──►  develop  ──►  release/*  ──PR──►  
                        └────────── back-merge ────────────┘
 ```
 
-| Evento | build & test | immagini OCI | push GHCR | docs |
-|---|---|---|---|---|
-| PR → `develop` / `master` / `release/**` | ✅ | ✅ build | ❌ | gate bloccante |
-| push su `develop` | ✅ | ✅ build | ❌ | **commit automatico** |
-| push su `release/**` / `hotfix/**` | ✅ | ✅ build | ❌ | warning non bloccante |
-| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante |
+| Evento | build & test | immagini OCI | push GHCR | docs | Release/Tag |
+|---|---|---|---|---|---|
+| PR → `develop` / `master` / `release/**` | ✅ | ✅ build | ❌ | gate bloccante | ❌ |
+| push su `develop` | ✅ | ✅ build | ❌ | **commit automatico** | ❌ |
+| push su `release/**` / `hotfix/**` | ✅ | ✅ build | ❌ | warning non bloccante | ❌ |
+| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante | **Automazione Release** |
+
+### Release Pipeline (`release.yml`)
+Quando un branch di release viene mergiato su `master`:
+1. **Tagging**: Crea un tag git `vX.Y.Z` basato sulla versione corrente nel `pom.xml`.
+2. **GitHub Release**: Crea una release su GitHub con changelog automatico.
+3. **Version Bump**:
+   - Esegue `mvn versions:set` per incrementare la patch.
+   - Committa e pusha su `develop` (back-merge) per allineare il monorepo alla nuova versione di sviluppo.
 
 `feature/*` non è nei trigger `push`: è già coperto dall'evento `pull_request` verso `develop`. Averlo in entrambi consumerebbe due run per lo stesso commit.
 
