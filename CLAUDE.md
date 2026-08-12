@@ -36,6 +36,8 @@ Un commit = un cambiamento logico. Se scopri un bug strada facendo, va in un com
 
 **Branching: git flow.** `feature/*` → PR verso `develop`; `release/*` e `hotfix/*` → `master` con back-merge su `develop`. Il branch di produzione è **`master`**, non `main`. Il publish su GHCR avviene solo su `master`; il commit automatico delle docs solo su `develop`.
 
+**Versioning & Release:** Il monorepo usa Maven `project.version`. Al merge su `master`, il workflow `release.yml` crea il tag git e incrementa la versione sul branch `develop` via `mvn versions:set`. Non cambiare le versioni a mano nei `pom.xml` dei moduli figli.
+
 ## Regole di lavoro
 
 - **Mai committare segreti**, nemmeno per il dev locale, nemmeno con un commento che dice di non farlo. Il `.gitignore` è rigoroso su chiavi, `.env` e credenziali Firebase: mantenerlo così. In `application.yaml` ci sono ancora token hardcoded — sono debito noto, non un precedente da seguire.
