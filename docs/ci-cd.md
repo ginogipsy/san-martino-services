@@ -25,11 +25,13 @@ feature/*  ──PR──►  develop  ──►  release/*  ──PR──►  
 
 ### Release Pipeline (`release.yml`)
 Quando un branch di release viene mergiato su `master`:
-1. **Tagging**: Crea un tag git `vX.Y.Z` basato sulla versione corrente nel `pom.xml`.
+1. **Tagging**: Crea un tag git `vX.Y.Z` basato sulla versione determinata dallo **Smart Versioning**.
 2. **GitHub Release**: Crea una release su GitHub con changelog automatico.
-3. **Version Bump**:
-   - Esegue `mvn versions:set` per incrementare la patch.
-   - Committa e pusha su `develop` (back-merge) per allineare il monorepo alla nuova versione di sviluppo.
+3. **Smart Versioning Logic**:
+   - **Branch Name**: Estrae la versione (formato `X.Y.Z`) dalla fine del nome del branch sorgente (es. `release/1.2.0`, `release/v1.2.0`, `hotfix/1.2.1`).
+   - **PR Labels**: Cerca le etichette `major` o `minor` nella Pull Request mergiata per decidere l'incremento.
+   - **Default**: Se non trova nulla, usa la versione attuale del `pom.xml`.
+4. **Version Bump**: Incrementa la patch rispetto alla versione rilasciata tramite `mvn versions:set` e aggiorna `develop` (back-merge).
 
 `feature/*` non è nei trigger `push`: è già coperto dall'evento `pull_request` verso `develop`. Averlo in entrambi consumerebbe due run per lo stesso commit.
 
