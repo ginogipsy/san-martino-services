@@ -5,6 +5,11 @@ on:
     branches:
       - master
   workflow_dispatch: # Consente il lancio manuale da interfaccia GitHub
+    inputs:
+      manual_version:
+        description: 'Forza una versione specifica (es: 1.5.0). Lascia vuoto per logica automatica.'
+        required: false
+        default: ''
 
 jobs:
   release:
@@ -45,8 +50,12 @@ jobs:
           PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K\d+' || true)
           
           INC_TYPE="patch"
-          REQ_VERSION=""
+          REQ_VERSION="${{ github.event.inputs.manual_version }}"
           BRANCH_NAME=""
+
+          if [ ! -z "$REQ_VERSION" ]; then
+            echo "Versione forzata manualmente da UI: $REQ_VERSION"
+          fi
 
           # Estrazione branch dal messaggio di commit
           BRANCH_NAME=$(echo "$COMMIT_MSG" | grep -oP 'from \S+/\K\S+' || true)
