@@ -41,8 +41,7 @@
         <openapi-generator.version>7.10.0</openapi-generator.version>
         <jackson-databind-nullable.version>0.2.6</jackson-databind-nullable.version>
         <testcontainers.version>1.21.4</testcontainers.version>
-        <!-- ... altre proprietà ... -->
-        <spring-cloud.version>2025.1.2</spring-cloud.version> <!-- Era 2025.1.1 -->
+        <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-boot.version>4.0.6</spring-boot.version>
 
         <!-- Docker image config (Buildpacks) -->
