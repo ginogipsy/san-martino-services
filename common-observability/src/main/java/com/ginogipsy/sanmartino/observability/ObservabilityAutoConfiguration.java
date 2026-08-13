@@ -11,7 +11,11 @@ import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.Ordered;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 /**
  * Registra l'osservabilità applicativa nei servizi che hanno questa libreria sul
@@ -64,5 +68,27 @@ public class ObservabilityAutoConfiguration {
     public CorrelationIdPropagationInterceptor correlationIdPropagationInterceptor(ObservabilityProperties properties) {
         ObservabilityProperties.Correlation correlation = properties.correlation();
         return new CorrelationIdPropagationInterceptor(correlation.headerName(), correlation.mdcKey());
+    }
+
+    /**
+     * Configura la propagazione automatica del correlation id su Kafka, se presente sul classpath.
+     */
+    /**
+     * Configura la propagazione automatica del correlation id su Kafka, se presente sul classpath.
+     */
+    @org.springframework.context.annotation.Configuration
+    @ConditionalOnClass({DefaultKafkaProducerFactory.class, ConcurrentKafkaListenerContainerFactory.class})
+    @ConditionalOnProperty(prefix = "sanmartino.observability.correlation", name = "enabled", matchIfMissing = true)
+    public static class KafkaObservabilityConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean
+        public com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor<Object, Object> kafkaCorrelationRecordInterceptor(
+                ObservabilityProperties properties) {
+            return new com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor<>(
+                    properties.correlation().headerName(),
+                    properties.correlation().mdcKey()
+            );
+        }
     }
 }
