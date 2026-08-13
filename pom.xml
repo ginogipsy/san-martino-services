@@ -14,7 +14,7 @@
 
     <groupId>com.ginogipsy.sanmartino</groupId>
     <artifactId>san-martino-services</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.1</version>
     <packaging>pom</packaging>
 
     <name>San Martino — services</name>
@@ -40,8 +40,9 @@
         <!-- Plugin versions -->
         <openapi-generator.version>7.10.0</openapi-generator.version>
         <jackson-databind-nullable.version>0.2.6</jackson-databind-nullable.version>
-        <testcontainers.version>1.20.4</testcontainers.version>
-        <spring-cloud.version>2025.1.1</spring-cloud.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <spring-cloud.version>2025.1.2</spring-cloud.version>
+        <spring-boot.version>4.0.6</spring-boot.version>
 
         <!-- Docker image config (Buildpacks) -->
         <docker.image.registry>ghcr.io</docker.image.registry>
@@ -75,6 +76,12 @@
                 <version>${spring-cloud.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-resttestclient</artifactId>
+                <version>${spring-boot.version}</version>
+                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
