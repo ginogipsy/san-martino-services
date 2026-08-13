@@ -31,7 +31,7 @@ projectJDK: "26" #(Applied in CI/CD pipeline)
 # non risolve quei simboli e riporta centinaia di falsi positivi su
 # events-service, stands-service e saga-orchestrator.
 # generate-sources basta: il goal `generate` del plugin e' legato a quella fase.
-bootstrap: ./mvnw -B -ntp generate-sources
+bootstrap: sh ./mvnw -B -ntp generate-sources
 
 #Install IDE plugins before Qodana execution (Applied in CI/CD pipeline)
 #plugins:
