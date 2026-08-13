@@ -33,6 +33,14 @@ Se preferisci specificare la versione nel branch:
 2. Apri la PR verso `master` e fai il merge.
 3. **Risultato**: Il bot forzerà esattamente la versione `0.1.0` in tutti i moduli.
 
+### 4. Metodo Manuale (GitHub UI)
+Per il massimo controllo:
+1. Vai nella tab **Actions** su GitHub.
+2. Seleziona il workflow **"Release & Smart Versioning"**.
+3. Clicca su **"Run workflow"**.
+4. Inserisci la versione desiderata nel campo `manual_version` (es: `1.5.0`).
+5. **Risultato**: Il bot userà esattamente quella versione per il tag e i `pom.xml`.
+
 ---
 
 ## 🤖 Cosa succede dietro le quinte?
