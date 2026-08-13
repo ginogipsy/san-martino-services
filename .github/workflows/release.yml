@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch: # Consente il lancio manuale da interfaccia GitHub
 
 jobs:
   release:
@@ -32,35 +33,44 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Legge la versione attuale dal pom.xml (base per il calcolo)
+          # 1. Legge la versione attuale dal pom.xml
           CURRENT_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "Versione attuale nel POM: $CURRENT_VERSION"
           
-          # 2. Analizza la PR di merge per capire l'intento
-          PR_NUMBER=$(git log -1 --pretty=%B | grep -oP 'Merge pull request #\K\d+' || true)
+          # 2. Analizza il contesto (PR o Branch)
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K\d+' || true)
           
           INC_TYPE="patch"
           REQ_VERSION=""
+          BRANCH_NAME=""
+
+          # Estrazione branch dal messaggio di commit
+          BRANCH_NAME=$(echo "$COMMIT_MSG" | grep -oP 'from \S+/\K\S+' || true)
           
-          if [ ! -z "$PR_NUMBER" ]; then
-            echo "Analizzando PR #$PR_NUMBER..."
-            # Controlla etichette (major, minor)
-            LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name')
-            if echo "$LABELS" | grep -iq "major"; then
-              INC_TYPE="major"
-            elif echo "$LABELS" | grep -iq "minor"; then
-              INC_TYPE="minor"
+          if [ ! -z "$PR_NUMBER" ] && [ -z "$BRANCH_NAME" ]; then
+            echo "Recupero info PR #$PR_NUMBER..."
+            BRANCH_NAME=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName' || true)
+          fi
+
+          if [ ! -z "$BRANCH_NAME" ]; then
+            echo "Branch rilevato: $BRANCH_NAME"
+            if [[ "$BRANCH_NAME" =~ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              REQ_VERSION="${BASH_REMATCH[1]}"
+              echo "Versione forzata da branch: $REQ_VERSION"
             fi
             
-            # Controlla se il branch ha un nome versione (es. release/1.2.0) alla fine
-            BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName')
-            if [[ "$BRANCH" =~ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-              REQ_VERSION="${BASH_REMATCH[1]}"
-              echo "Versione rilevata dal branch ($BRANCH): $REQ_VERSION"
+            if [ ! -z "$PR_NUMBER" ]; then
+              LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || true)
+              if echo "$LABELS" | grep -iq "major"; then
+                INC_TYPE="major"
+              elif echo "$LABELS" | grep -iq "minor"; then
+                INC_TYPE="minor"
+              fi
             fi
           fi
           
-          # 3. Calcola la versione da RILASCIARE (Tag)
+          # 3. Calcolo versione di rilascio
           if [ ! -z "$REQ_VERSION" ]; then
             RELEASE_VERSION="$REQ_VERSION"
           else
@@ -70,20 +80,22 @@ jobs:
             elif [ "$INC_TYPE" == "minor" ]; then
               RELEASE_VERSION="$MAJOR.$((MINOR + 1)).0"
             else
-              # Se è patch, usiamo la versione attuale del POM
               RELEASE_VERSION="$CURRENT_VERSION"
             fi
           fi
           
           echo "RELEASE_VERSION=$RELEASE_VERSION" >> $GITHUB_ENV
           echo "release_version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "### 🚀 Release Target: \`$RELEASE_VERSION\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Create Git Tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Elimina tag locale se esistente (per evitare conflitti in caso di retry)
+          git tag -d "v${{ env.RELEASE_VERSION }}" 2>/dev/null || true
           git tag -a "v${{ env.RELEASE_VERSION }}" -m "Release v${{ env.RELEASE_VERSION }}"
-          git push origin "v${{ env.RELEASE_VERSION }}"
+          git push origin "v${{ env.RELEASE_VERSION }}" --force
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -100,17 +112,16 @@ jobs:
       - name: Bump Version for next cycle
         run: |
           REL_VERSION=${{ steps.versioning.outputs.release_version }}
-          
-          # Incrementiamo sempre la patch per il prossimo giro di develop
           IFS='.' read -r MAJOR MINOR PATCH <<< "$REL_VERSION"
-          NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           
-          ./mvnw versions:set -DnewVersion="$NEW_VERSION" -DgenerateBackupPoms=false
-          
-          echo "NEXT_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "Aggiornamento develop alla versione: $NEXT_VERSION"
+          ./mvnw versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
+          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_ENV
 
       - name: Commit and Push Bump
         run: |
           git add **/pom.xml pom.xml
+          # [skip ci] per evitare loop infiniti
           git commit -m "chore(release): bump version to ${{ env.NEXT_VERSION }} [skip ci]"
           git push origin develop
