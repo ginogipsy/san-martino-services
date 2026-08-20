@@ -3,21 +3,28 @@ package com.ginogipsy.sanmartino.gateway;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * Risposte del gateway quando un circuito è aperto.
+ *
+ * <p>I metodi non restringono il verbo HTTP: il filtro {@code CircuitBreaker} usa un
+ * {@code forward:}, che conserva il metodo della richiesta originale, e i prefissi
+ * instradati espongono anche POST, PUT e DELETE. Con un {@code @GetMapping} una
+ * scrittura su un circuito aperto otterrebbe un 405 invece del 503 di questo fallback.
+ */
 @RestController
 @RequestMapping("/fallback")
 public class FallbackController {
 
-    @GetMapping("/events")
+    @RequestMapping("/events")
     public ResponseEntity<ProblemDetail> eventsFallback() {
         return fallback("Events service unavailable",
                 "Il microservizio Events non risponde in tempo. Riprova tra qualche secondo.");
     }
 
-    @GetMapping("/stands")
+    @RequestMapping("/stands")
     public ResponseEntity<ProblemDetail> standsFallback() {
         return fallback("Stands service unavailable",
                 "Il microservizio Stands non risponde in tempo. Riprova tra qualche secondo.");
