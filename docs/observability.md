@@ -166,9 +166,30 @@ Le chiavi MDC diventano campi di primo livello nel log JSON: `correlationId`, `h
 `httpPath` (per richiesta) e `operation`, `durationMs`, `outcome` (sulle righe di uscita
 dell'aspect). Sono filtrabili in Loki senza regex.
 
-> **Kafka non propaga ancora il correlation id.** Un evento saga consumato da
-> notifications-service apre una catena nuova. Serve un `ProducerInterceptor` /
-> `RecordInterceptor` che scriva l'id negli header del record: non è in questo task.
+### Attraverso Kafka
+
+Un evento saga non apre più una catena nuova: l'id viaggia come header del record,
+`X-Correlation-Id`, con due meccanismi diversi ai due estremi.
+
+In **produzione** l'interceptor è `KafkaCorrelationInterceptor`, un `ProducerInterceptor` di
+Apache Kafka: non è un bean, è Kafka a istanziarlo per nome da `interceptor.classes`. Ce lo
+mette `ObservabilityAutoConfiguration` con un `DefaultKafkaProducerFactoryCustomizer`, che
+aggiunge alla config map del producer il nome della classe — in merge con gli interceptor
+eventualmente dichiarati dal servizio, perché `updateConfigs` sovrascrive la chiave invece
+di accodarla — e le due chiavi da cui `configure()` legge header e chiave MDC. Passare dalla
+config map è l'unica via per configurare un oggetto che non è Spring a costruire.
+
+In **consumo** è `KafkaCorrelationRecordInterceptor`, un `RecordInterceptor` di Spring Kafka,
+esposto come bean e agganciato da Boot alla listener container factory. Attenzione: **un
+servizio che dichiara una propria factory deve chiamare `setRecordInterceptor` a mano**,
+perché con un bean di nome `kafkaListenerContainerFactory` l'auto-configurazione di Boot
+arretra e con lei l'aggancio. `notifications-service` è in questo caso — la factory custom
+gli serve per i deserializer — e lo fa esplicitamente in `KafkaConsumerConfig`.
+
+Il callback di `KafkaTemplate.send` gira sul thread I/O del producer, che non ha l'MDC della
+richiesta: `SagaEventPublisher` cattura la mappa MDC prima della `send` e la ripristina
+attorno al log dell'esito, altrimenti quella riga — il passaggio da HTTP a Kafka, cioè dove
+si guarda quando un evento non arriva — resterebbe l'unica non correlabile della catena.
 
 ---
 
@@ -316,6 +337,54 @@ curl -s -G http://localhost:3100/loki/api/v1/query_range \
   --data-urlencode 'since=30m' | jq '.data.result | length'
 ```
 
+### La catena completa, dal gateway a Kafka
+
+Prova la propagazione end-to-end: un id **generato dal gateway** deve arrivare ai log di
+`notifications-service` attraversando saga-orchestrator e Kafka.
+
+```bash
+# 1. Infrastruttura. I servizi applicativi girano sull'host, non in Compose: non hanno
+#    healthcheck, e i depends_on che li richiedono `service_healthy` farebbero fallire un
+#    `docker compose up` dell'intero stack.
+docker compose up -d vault vault-init postgres-events postgres-stands postgres-saga kafka
+
+# Se hai cambiato un secret in docker-compose.yml, vault-init va rieseguito: è un
+# one-shot, un container già uscito non ripopola nulla.
+docker compose up -d --force-recreate --no-deps vault-init
+docker exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=my-root-token \
+  san-martino-vault vault kv get secret/gateway     # deve contenere SAGA_URI
+
+# 2. I cinque servizi coinvolti, sull'host
+for s in events-service stands-service saga-orchestrator notifications-service gateway; do
+  java -jar $s/target/$s-<versione>.jar > /tmp/$s.log 2>&1 &
+done
+
+# 3. Una cantina da far validare alla saga, passando dal gateway
+curl -s -X POST localhost:8080/v1/stands -H 'Content-Type: application/json' \
+  -d '{"number":42,"name":"Cantina E2E","description":{"it":"prova","en":"test"},
+       "firstParticipationYear":1990,"latitude":41.58,"longitude":13.58}'
+
+# 4. La saga, SENZA X-Correlation-Id: l'id lo deve generare il gateway e tornare in risposta
+curl -s -D - -o /dev/null -X POST localhost:8080/v1/sagas/create-event-with-stands \
+  -H 'Content-Type: application/json' \
+  -d '{"event":{"name":"Festa E2E","place":"Arce","startDate":"2026-11-11",
+       "endDate":"2026-11-13","description":{"it":"prova","en":"test"}},
+       "standIds":["<id della cantina>"]}' | grep -i correlation
+
+# 5. Lo stesso id nei log di notifications-service, sul thread del listener
+grep '<id generato>' /tmp/notifications-service.log
+
+# 6. Prova diretta sul record, invece che dedotta dai log: l'header c'è davvero.
+#    MSYS_NO_PATHCONV serve su Git Bash, che altrimenti riscrive il path dentro il container.
+MSYS_NO_PATHCONV=1 docker exec san-martino-kafka /opt/kafka/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 --topic sanmartino.saga.events \
+  --from-beginning --property print.headers=true --timeout-ms 12000
+```
+
+Il gateway non logga nulla per richiesta, quindi nei suoi log l'id non si trova: è un punto
+cieco della traccia, non un MDC rotto. Che il filtro abbia fatto il suo lavoro si vede
+dall'header in risposta e dai log dei servizi a valle.
+
 ### In Grafana
 
 <http://localhost:3000> (admin/admin) → **Dashboards → San Martino → San Martino — overview**:
@@ -346,7 +415,8 @@ sum by (application) (jvm_memory_used_bytes{area="heap"})
 
 Verificato su questa postazione (Windows, Docker Desktop 29.6.2):
 
-- i 29 test unitari di `common-observability` (`./mvnw -pl :common-observability test`);
+- i 40 test unitari di `common-observability` (`./mvnw -pl :common-observability test`), di cui
+  11 sui due interceptor Kafka: comportamento degli interceptor e cablaggio dell'autoconfig;
 - `./mvnw clean verify -DskipTests` sull'intero reactor;
 - stack Compose avviato: Prometheus ready, Loki ready, Grafana health `ok`, Promtail senza
   errori, data source e dashboard provisionate (verificate via API Grafana);
@@ -355,10 +425,29 @@ Verificato su questa postazione (Windows, Docker Desktop 29.6.2):
   `up`, log interrogabili in Loki per `correlationId`, container Compose raccolti dal
   socket Docker.
 
+- **la catena completa, a runtime, con gateway + events + stands + saga + notifications
+  accesi insieme** (procedura in [§6](#la-catena-completa-dal-gateway-a-kafka)): un id
+  generato dal gateway su una richiesta senza header è comparso nei log di events-service e
+  stands-service (propagazione HTTP), di saga-orchestrator, e di notifications-service
+  attraverso Kafka, sul thread del listener. L'header `X-Correlation-Id` è stato letto
+  direttamente dai record del topic `sanmartino.saga.events`, non dedotto dai log;
+- il log di esito di `SagaEventPublisher`, che gira sul thread I/O del producer, esce
+  correlato.
+
 **Non** verificato:
 
-- gli altri cinque servizi a runtime (solo compilazione): in particolare la propagazione
-  del correlation id **attraverso** il gateway e la saga, che ha senso provare con
-  gateway + events + stands + saga accesi insieme;
+- **FCM**: la prova è stata fatta con `sanmartino.fcm.enabled=false`, quindi il push è
+  passato da `LoggingPushNotificationSender`. L'invio reale a Firebase resta da provare;
+- **il gateway come punto osservabile**: non logga nulla per richiesta, quindi non si può
+  dire se il filtro `CircuitBreaker` con time limiter esegua la chiamata a valle su un
+  thread del pool di Resilience4j perdendo l'MDC. Il transito dell'header non ne dipende
+  (lo porta il wrapper della richiesta, non l'MDC) e funziona; servirebbe una riga di
+  access log per chiudere la domanda;
+- **il transito su Kafka nei test automatici**: la copertura locale è unitaria, il
+  passaggio su un broker è provato solo a mano. Manca `org.testcontainers:kafka` in scope
+  `test` su `saga-orchestrator` e `notifications-service`;
 - `EventsApiTest` continua a non girare in locale per il problema Testcontainers descritto
   in [ci-cd.md](./ci-cd.md) — è precedente a questo task e si valida in CI.
+
+Dettaglio cosmetico noto: la risposta esce con `X-Correlation-Id` due volte, stesso valore.
+Lo imposta il filtro del gateway e Gateway MVC ci accoda quello del servizio a valle.

@@ -43,6 +43,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   **Pipeline CI/CD su GitHub Actions completata** (task #003): build & test su JDK 26, immagini OCI via Buildpacks per i sei servizi, push su GHCR limitato a `master`, rigenerazione automatica del reference OpenAPI in `docs/api/`. Analisi statica con Qodana. Dettagli in [ci-cd.md](./ci-cd.md).
 *   **Standard di codice formalizzati** in [CODING_STANDARDS.md](./CODING_STANDARDS.md); regole operative per gli agenti nel `CLAUDE.md` alla radice del repo.
 *   **Logging & observability completata** (task #004): nuovo modulo `common-observability` (aspect AOP di logging con mascheramento dei dati sensibili, correlation id in MDC, log JSON in formato ECS), metriche Micrometer/Prometheus sui sei servizi, stack Prometheus + Loki + Promtail + Grafana nel `docker-compose.yml` con data source e dashboard provisionate. Dettagli e istruzioni di prova in [observability.md](./observability.md).
+*   **Correlation id attraverso Kafka** (task #008): l'interceptor producer viene registrato dall'autoconfig sul producer factory di Boot (`interceptor.classes`, in merge con quelli del servizio), il `RecordInterceptor` è agganciato a mano nella factory custom di `notifications-service`, e `SagaEventPublisher` ripristina l'MDC nel callback della `send`. Aggiunta la route del gateway verso `saga-orchestrator`, così le saghe non si avviano più scavalcandolo. **Validato a runtime sullo stack completo**: un id generato dal gateway arriva ai log di `notifications-service` passando per Kafka, e l'header è presente sui record del topic. Procedura riproducibile in [observability.md](./observability.md) §6.
 
 ### Problemi risolti
 
@@ -59,13 +60,13 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 
 ### Problemi noti, ancora aperti
 
-0. **Osservabilità validata solo su `events-service`.** L'aspect, il correlation id, lo scrape Prometheus e l'ingestione in Loki sono stati provati a runtime con `events-service` avviato sull'host; gli altri cinque servizi sono verificati solo in compilazione. Mancano: la propagazione del correlation id **attraverso** gateway → events/stands → saga, e la propagazione via header Kafka verso `notifications-service` (non implementata).
+0. **Osservabilità: la catena del correlation id è validata, il gateway resta un punto cieco.** Gateway → saga → events/stands → Kafka → `notifications-service` è stato provato a runtime (task #008). Restano aperti tre punti: il gateway non logga nulla per richiesta, quindi non si sa se il filtro `CircuitBreaker` con time limiter esegua la chiamata a valle su un thread del pool di Resilience4j perdendo l'MDC (il transito dell'header non ne dipende e funziona); lo scrape Prometheus e l'ingestione in Loki sono stati verificati solo con `events-service`; la risposta esce con `X-Correlation-Id` duplicato, perché lo impostano sia il filtro del gateway sia il servizio a valle.
 
 1. **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
 2. **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
-3. **`project.version` fisso a `0.0.1`**: ogni push su `master` sovrascrive i tag `0.0.1` e `latest` su GHCR. Serve una strategia di versioning.
-4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
-5. **Smoke test `notifications-service`** (Kafka + FCM) mai completato.
+3. ~~**`project.version` fisso a `0.0.1`**~~ — **risolto, ma mai osservato su una run reale.** `release.yml` determina la versione da nome del branch, etichette PR o input manuale, tagga il repo e incrementa la patch su `develop`; `ci-cd.yml` pubblica su GHCR tre tag per servizio (`:${VERSION}`, `:sha-<7>`, `:latest`). La versione corrente del reactor è `1.1.3`. Letto dai workflow, non verificato su un merge su `master`.
+4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test`. Le classi di test ora esistono (`SagaEventPublisherTest`, `KafkaConsumerConfigTest`), ma sono unitarie: il transito su un broker è provato solo a mano.
+5. **Smoke test `notifications-service`**: il ramo Kafka è validato end-to-end (task #008), **FCM no** — la prova è stata fatta con `sanmartino.fcm.enabled=false`, quindi il push è passato da `LoggingPushNotificationSender`.
 6. **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
 
 ## 5. Prossimi Passi (Priorità)
@@ -73,9 +74,9 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 1.  **Far girare la pipeline su una PR verso `develop`** e verificare le due incognite mai validate in locale: che `temurin:26` esista su `setup-java`, e che `EventsApiTest` passi con Vault più Testcontainers.
 2.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
 3.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
-4.  **Strategia di versioning** al posto dello `0.0.1` fisso.
-5.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
-6.  **Smoke test end-to-end via Saga.**
+4.  **Completare lo smoke test del `notifications-service`**: manca il solo invio reale via FCM, il ramo Kafka è validato.
+5.  **Rigenerare `docs/api/`**: c'è drift fra gli YAML in `api/` e gli HTML generati, e il gate della CI lo blocca. Catena esatta e versioni pinnate in [ci-cd.md](./ci-cd.md).
+6.  **Chiudere i punti aperti dell'osservabilità**: una riga di access log sul gateway (oggi punto cieco) e `org.testcontainers:kafka` per provare il transito in CI.
 
 ## 6. Decisioni Prese in Precedenza
 
