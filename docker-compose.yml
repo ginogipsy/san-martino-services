@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: events
       POSTGRES_USER: events
-      POSTGRES_PASSWORD: events
+      POSTGRES_PASSWORD: ${EVENTS_DB_PASSWORD:-events}
     ports:
       - "5433:5432"
     volumes:
@@ -22,7 +22,7 @@ services:
     environment:
       POSTGRES_DB: stands
       POSTGRES_USER: stands
-      POSTGRES_PASSWORD: stands
+      POSTGRES_PASSWORD: ${STANDS_DB_PASSWORD:-stands}
     ports:
       - "5434:5432"
     volumes:
@@ -39,7 +39,7 @@ services:
     environment:
       POSTGRES_DB: saga
       POSTGRES_USER: saga
-      POSTGRES_PASSWORD: saga
+      POSTGRES_PASSWORD: ${SAGA_DB_PASSWORD:-saga}
     ports:
       - "5435:5432"
     volumes:
@@ -57,7 +57,7 @@ services:
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: keycloak_password
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_password}
     ports:
       - "5436:5432" # Porta host incrementata (5436) per evitare conflitti esterni
     volumes:
@@ -74,7 +74,7 @@ services:
     environment:
       POSTGRES_DB: auth
       POSTGRES_USER: auth
-      POSTGRES_PASSWORD: auth
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD:-auth}
     ports:
       - "5437:5432"
     volumes:
@@ -99,7 +99,7 @@ services:
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak_password
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak_password}
     ports:
       - "9080:8080"
     volumes:
@@ -182,16 +182,16 @@ services:
             spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:9080/realms/san-martino/protocol/openid-connect/certs \
             spring.datasource.url=jdbc:postgresql://localhost:5437/auth \
             spring.datasource.username=auth \
-            spring.datasource.password=auth \
+            spring.datasource.password=${AUTH_DB_PASSWORD:-auth} \
             keycloak.server-url=http://localhost:9080 \
             keycloak.realm=san-martino \
             keycloak.client-id=admin-cli-wrapper \
-            keycloak.client-secret=d457ab89-9283-4d14-b3ba-8f82a5a244f5
+            keycloak.client-secret=${KEYCLOAK_CLIENT_SECRET:-YOUR_CLIENT_SECRET_PLACEHOLDER}
 
         vault kv put secret/events-service \
             spring.datasource.url=jdbc:postgresql://localhost:5433/events \
             spring.datasource.username=events \
-            spring.datasource.password=events
+            spring.datasource.password=${EVENTS_DB_PASSWORD:-events}
 
         vault kv put secret/gateway \
             EVENTS_URI=http://localhost:8081 \
@@ -199,12 +199,12 @@ services:
 
         vault kv put secret/notifications-service \
             spring.kafka.bootstrap-servers=localhost:9092 \
-            sanmartino.fcm.credentials-path=/path/to/your/fcm/credentials.json
+            sanmartino.fcm.credentials-path=${FCM_CREDENTIALS_PATH:-/path/to/your/fcm/credentials.json}
 
         vault kv put secret/saga-orchestrator \
             spring.datasource.url=jdbc:postgresql://localhost:5435/saga \
             spring.datasource.username=saga \
-            spring.datasource.password=saga \
+            spring.datasource.password=${SAGA_DB_PASSWORD:-saga} \
             clients.events-base-url=http://localhost:8081 \
             clients.stands-base-url=http://localhost:8082 \
             spring.kafka.bootstrap-servers=localhost:9092
@@ -212,7 +212,7 @@ services:
         vault kv put secret/stands-service \
             spring.datasource.url=jdbc:postgresql://localhost:5434/stands \
             spring.datasource.username=stands \
-            spring.datasource.password=stands
+            spring.datasource.password=${STANDS_DB_PASSWORD:-stands}
 
         echo 'Vault population complete.'
     environment:

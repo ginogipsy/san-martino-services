@@ -10,7 +10,7 @@
       "publicClient": false,
       "bearerOnly": false,
       "serviceAccountsEnabled": true,
-      "secret": "d457ab89-9283-4d14-b3ba-8f82a5a244f5",
+      "secret": "YOUR_CLIENT_SECRET_PLACEHOLDER",
       "directAccessGrantsEnabled": true
     }
   ]
