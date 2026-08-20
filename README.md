@@ -87,6 +87,13 @@ docker compose up -d prometheus loki promtail grafana
 Branching **git flow**: `feature/*` → PR verso `develop`; `release/*` e `hotfix/*` → `master`.
 Commit: `(#NNN) descrizione all'infinito inglese`. Dettagli in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
+## 🛡️ Sicurezza e Portfolio
+
+Questo repository è stato configurato per essere mostrato in un portfolio pubblico:
+- **Zero Segreti**: Tutti i segreti (password DB, client secrets) sono stati rimossi dai file di configurazione.
+- **Configurazione via .env**: Usa il file `.env.example` come base per creare il tuo file `.env` locale con le tue credenziali.
+- **Vault Integration**: I segreti a runtime sono gestiti tramite HashiCorp Vault.
+
 ## Layout repo
 
 ```
