@@ -15,20 +15,33 @@ import java.util.Map;
  *
  * <p>Consente di seguire la traccia di una richiesta anche quando attraversa
  * i confini del trasporto asincrono.
+ *
+ * <p>Non è un bean Spring: {@link ProducerInterceptor} è un'interfaccia di Apache
+ * Kafka, che istanzia la classe per nome dalla property {@code interceptor.classes}
+ * e la configura passandole la config map del producer. La registrazione automatica
+ * la fa {@code ObservabilityAutoConfiguration}, che aggiunge a quella map il nome di
+ * questa classe e le due chiavi qui sotto.
  */
 public class KafkaCorrelationInterceptor<K, V> implements ProducerInterceptor<K, V> {
+
+    /** Chiave della config map del producer con cui si sovrascrive il nome dell'header. */
+    public static final String HEADER_NAME_CONFIG = "sanmartino.observability.header";
+
+    /** Chiave della config map del producer con cui si sovrascrive la chiave MDC. */
+    public static final String MDC_KEY_CONFIG = "sanmartino.observability.mdc-key";
 
     private String headerName;
     private String mdcKey;
 
     @Override
     public void configure(Map<String, ?> configs) {
-        this.headerName = configs.get("sanmartino.observability.header") != null 
-                ? configs.get("sanmartino.observability.header").toString() 
-                : "X-Correlation-Id";
-        this.mdcKey = configs.get("sanmartino.observability.mdc-key") != null 
-                ? configs.get("sanmartino.observability.mdc-key").toString() 
-                : "correlationId";
+        this.headerName = value(configs, HEADER_NAME_CONFIG, "X-Correlation-Id");
+        this.mdcKey = value(configs, MDC_KEY_CONFIG, "correlationId");
+    }
+
+    private static String value(Map<String, ?> configs, String key, String fallback) {
+        Object configured = configs.get(key);
+        return configured != null ? configured.toString() : fallback;
     }
 
     @Override

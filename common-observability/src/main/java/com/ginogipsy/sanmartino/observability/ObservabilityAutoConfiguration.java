@@ -1,21 +1,28 @@
 package com.ginogipsy.sanmartino.observability;
 
+import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationInterceptor;
+import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor;
 import jakarta.servlet.Filter;
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.kafka.autoconfigure.DefaultKafkaProducerFactoryCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Collection;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Registra l'osservabilità applicativa nei servizi che hanno questa libreria sul
@@ -72,23 +79,78 @@ public class ObservabilityAutoConfiguration {
 
     /**
      * Configura la propagazione automatica del correlation id su Kafka, se presente sul classpath.
+     *
+     * <p>Le due direzioni usano meccanismi diversi: in consumo Spring Kafka accetta un
+     * bean {@code RecordInterceptor}, in produzione l'interceptor è un'interfaccia di
+     * Apache Kafka che vive nella config map del producer.
      */
-    /**
-     * Configura la propagazione automatica del correlation id su Kafka, se presente sul classpath.
-     */
-    @org.springframework.context.annotation.Configuration
+    @Configuration
     @ConditionalOnClass({DefaultKafkaProducerFactory.class, ConcurrentKafkaListenerContainerFactory.class})
     @ConditionalOnProperty(prefix = "sanmartino.observability.correlation", name = "enabled", matchIfMissing = true)
     public static class KafkaObservabilityConfiguration {
 
+        /**
+         * Il bean da solo non basta: lo applica alla listener container factory
+         * l'auto-configurazione di Boot, quindi un servizio che dichiara una factory
+         * propria deve chiamare {@code setRecordInterceptor} a mano.
+         */
         @Bean
         @ConditionalOnMissingBean
-        public com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor<Object, Object> kafkaCorrelationRecordInterceptor(
+        public KafkaCorrelationRecordInterceptor<Object, Object> kafkaCorrelationRecordInterceptor(
                 ObservabilityProperties properties) {
-            return new com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor<>(
-                    properties.correlation().headerName(),
-                    properties.correlation().mdcKey()
-            );
+            ObservabilityProperties.Correlation correlation = properties.correlation();
+            return new KafkaCorrelationRecordInterceptor<>(correlation.headerName(), correlation.mdcKey());
+        }
+
+        /**
+         * Aggiunge {@link KafkaCorrelationInterceptor} agli {@code interceptor.classes}
+         * del producer auto-configurato, insieme alle due chiavi che il suo
+         * {@code configure()} legge: Kafka lo istanzia per nome, quindi l'header name e
+         * la chiave MDC possono arrivargli solo dalla config map.
+         *
+         * <p>Le due chiavi custom non producono il warning "supplied but isn't a known
+         * config": Kafka passa a {@code configure()} una {@code RecordingMap}, che segna
+         * come usata ogni chiave letta con {@code get()}.
+         */
+        @Bean
+        @ConditionalOnClass(DefaultKafkaProducerFactoryCustomizer.class)
+        @ConditionalOnMissingBean(name = "kafkaCorrelationProducerFactoryCustomizer")
+        public DefaultKafkaProducerFactoryCustomizer kafkaCorrelationProducerFactoryCustomizer(
+                ObservabilityProperties properties) {
+            ObservabilityProperties.Correlation correlation = properties.correlation();
+            return producerFactory -> producerFactory.updateConfigs(Map.of(
+                    ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
+                    withCorrelationInterceptor(producerFactory.getConfigurationProperties()),
+                    KafkaCorrelationInterceptor.HEADER_NAME_CONFIG, correlation.headerName(),
+                    KafkaCorrelationInterceptor.MDC_KEY_CONFIG, correlation.mdcKey()));
+        }
+
+        /**
+         * {@code updateConfigs} sovrascrive la chiave, non la accoda: senza questo merge
+         * un {@code interceptor.classes} configurato dal servizio verrebbe perso.
+         */
+        private static String withCorrelationInterceptor(Map<String, Object> producerConfigs) {
+            String correlationInterceptor = KafkaCorrelationInterceptor.class.getName();
+            String configured = asCsv(producerConfigs.get(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG));
+            if (configured.isBlank() || configured.contains(correlationInterceptor)) {
+                return configured.isBlank() ? correlationInterceptor : configured;
+            }
+            return configured + "," + correlationInterceptor;
+        }
+
+        /** {@code interceptor.classes} ammette CSV, {@code List<String>} e {@code List<Class>}. */
+        private static String asCsv(Object configured) {
+            return switch (configured) {
+                case null -> "";
+                case Collection<?> classes -> classes.stream()
+                        .map(KafkaObservabilityConfiguration::className)
+                        .collect(Collectors.joining(","));
+                default -> configured.toString();
+            };
+        }
+
+        private static String className(Object value) {
+            return value instanceof Class<?> type ? type.getName() : String.valueOf(value);
         }
     }
 }
