@@ -20,6 +20,12 @@ spring:
                 - Path=/v1/stands/**
               filters:
                 - CircuitBreaker=standsCb,forward:/fallback/stands
+            - id: sagas
+              uri: ${SAGA_URI} # Verrà da Vault o variabile d'ambiente
+              predicates:
+                - Path=/v1/sagas/**
+              filters:
+                - CircuitBreaker=sagasCb,forward:/fallback/sagas
     vault:
       host: localhost
       port: 8200
@@ -63,12 +69,24 @@ resilience4j:
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
+      sagasCb:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
   timelimiter:
     instances:
       eventsCb:
         timeoutDuration: 5s
       standsCb:
         timeoutDuration: 5s
+      # Una saga non è una singola query: create-event-with-stands fa tre passi
+      # sincroni (events-service, stands-service, persistenza locale) e ognuno può
+      # arrivare al proprio timeout. Con i 5s degli altri due il gateway aprirebbe
+      # il circuito su saghe che stanno solo lavorando, e la compensazione girerebbe
+      # comunque a valle: il client vedrebbe un 503 su una saga andata a buon fine.
+      sagasCb:
+        timeoutDuration: 20s
 
 # --- Logging & observability ---------------------------------------------
 # L'aspect di logging (parametri, durata, esiti) e il correlation id arrivano da

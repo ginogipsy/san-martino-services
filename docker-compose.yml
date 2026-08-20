@@ -195,7 +195,8 @@ services:
 
         vault kv put secret/gateway \
             EVENTS_URI=http://localhost:8081 \
-            STANDS_URI=http://localhost:8082
+            STANDS_URI=http://localhost:8082 \
+            SAGA_URI=http://localhost:8083
 
         vault kv put secret/notifications-service \
             spring.kafka.bootstrap-servers=localhost:9092 \
@@ -271,6 +272,8 @@ services:
       stands-service: # Gateway instrada a stands-service
         condition: service_healthy
       auth-service: # Gateway instrada a auth-service
+        condition: service_healthy
+      saga-orchestrator: # Gateway instrada a saga-orchestrator
         condition: service_healthy
       kafka:
         condition: service_healthy

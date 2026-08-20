@@ -30,6 +30,18 @@ public class FallbackController {
                 "Il microservizio Stands non risponde in tempo. Riprova tra qualche secondo.");
     }
 
+    /**
+     * A differenza degli altri due, qui il 503 non dice che nulla è accaduto: la saga
+     * può essere in corso o già completata a valle, il gateway ha solo smesso di
+     * aspettarla. Il client deve rileggere lo stato, non ritentare la creazione.
+     */
+    @RequestMapping("/sagas")
+    public ResponseEntity<ProblemDetail> sagasFallback() {
+        return fallback("Saga orchestrator unavailable",
+                "L'orchestratore non ha risposto in tempo. La saga potrebbe essere ancora in corso: "
+                        + "verificane lo stato invece di ripetere la richiesta.");
+    }
+
     private ResponseEntity<ProblemDetail> fallback(String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, detail);
         problem.setTitle(title);
