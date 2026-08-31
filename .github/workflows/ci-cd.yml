@@ -4,6 +4,7 @@ name: CI/CD
 # San Martino — pipeline monorepo Maven multi-modulo (Java 26 / Spring Boot 4)
 #
 #   build-test  ──► build-images ──► (push GHCR solo su master)
+#               │                └─► release  ──► (tag + GitHub Release + bump)
 #               └─► docs         ──► (commit automatico solo su develop)
 #
 # Allineata a git flow:
@@ -11,7 +12,7 @@ name: CI/CD
 #   develop    → push                    → build + test + commit docs
 #   release/*  → branch + PR verso master→ build + test + immagini (no push)
 #   hotfix/*   → branch + PR verso master→ build + test + immagini (no push)
-#   master     → push (merge di release) → build + test + push immagini su GHCR
+#   master     → push (merge di release) → build + test + immagini su GHCR + release
 # ---------------------------------------------------------------------------
 
 on:
@@ -462,3 +463,33 @@ jobs:
           path: docs/api
           retention-days: 14
           if-no-files-found: ignore
+
+  # =========================================================================
+  # 4. RELEASE — tag git + GitHub Release + bump di develop (solo push master)
+  #
+  # Sta qui, come job con `needs`, e non in un workflow a sé su `push: master`:
+  # release.yml girava in parallelo a build-test, quindi il tag e la Release
+  # nascevano anche da una run rossa, e la versione veniva ricalcolata per
+  # conto proprio. Con `needs: [build-test, build-images]`:
+  #
+  #   - il tag esiste solo se il reactor passa e le sei immagini sono su GHCR
+  #     (build-images ha fail-fast: false, ma `needs` richiede tutti success);
+  #   - la versione è LA STESSA che ha taggato le immagini, perché è lo stesso
+  #     output — non due letture indipendenti dello stesso pom;
+  #   - il `concurrency` group in testa al file serializza i push su master,
+  #     quindi due merge ravvicinati non si contendono il bump su develop.
+  #
+  # NB: il filtro `paths` del trigger vale anche qui. Un merge su master che
+  # tocca solo docs/** non produce immagini e quindi non produce release: è
+  # coerente, non si rilascia una versione che non ha artefatti nuovi.
+  # =========================================================================
+  release:
+    name: Release
+    needs: [build-test, build-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write        # tag, GitHub Release, commit del bump su develop
+      pull-requests: read    # per risalire alla PR mergiata (squash merge)
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.build-test.outputs.version }}
