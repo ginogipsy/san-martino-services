@@ -63,7 +63,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 
 1. **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
 2. **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
-3. **`project.version` fisso a `0.0.1`**: ogni push su `master` sovrascrive i tag `0.0.1` e `latest` su GHCR. Serve una strategia di versioning.
+3. ~~**`project.version` fisso a `0.0.1`**~~ — superato: il reactor è a `1.1.4` e `ci-cd.yml` pubblica tre tag per servizio (`:${VERSION}`, `:sha-<7>`, `:latest`). Restava però rotto l'aggancio fra tag e artefatto: `release.yml` calcolava la versione da nome del branch ed etichette PR senza scriverla nei pom, quindi `v1.1.0` è stato taggato su un pom `1.0.1` e `v1.1.2` su un pom `1.1.1` (e su GHCR manca `:1.1.2`). Ora la versione si decide sul branch di release e la pipeline la verifica; **il flusso completo non è ancora stato osservato su una run reale**, e le due release già incoerenti non vengono riscritte. Dettagli in [ci-cd.md](./ci-cd.md).
 4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
 5. **Smoke test `notifications-service`** (Kafka + FCM) mai completato.
 6. **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
@@ -73,7 +73,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 1.  **Far girare la pipeline su una PR verso `develop`** e verificare le due incognite mai validate in locale: che `temurin:26` esista su `setup-java`, e che `EventsApiTest` passi con Vault più Testcontainers.
 2.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
 3.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
-4.  **Strategia di versioning** al posto dello `0.0.1` fisso.
+4.  **Osservare la prima release col flusso nuovo** su un merge verso `master`: tag creato dopo il push delle immagini, versione coerente fra tag/pom/GHCR, bump su `develop` andato a buon fine.
 5.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
 6.  **Smoke test end-to-end via Saga.**
 

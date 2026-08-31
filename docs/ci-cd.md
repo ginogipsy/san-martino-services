@@ -4,8 +4,8 @@ Due workflow in `.github/workflows/`:
 
 | File | Scopo |
 |---|---|
-| `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI |
-| `release.yml` | Tag, GitHub Release, Version Bump (Maven) |
+| `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI, release |
+| `release.yml` | tag git, GitHub Release, bump della versione su `develop`. **Non ha un trigger proprio**: è un `workflow_call` invocato come ultimo job di `ci-cd.yml` |
 | `qodana_code_quality.yml` | analisi statica JetBrains Qodana |
 
 ## Allineamento a git flow
@@ -21,17 +21,44 @@ feature/*  ──PR──►  develop  ──►  release/*  ──PR──►  
 | PR → `develop` / `master` / `release/**` | ✅ | ✅ build | ❌ | gate bloccante | ❌ |
 | push su `develop` | ✅ | ✅ build | ❌ | **commit automatico** | ❌ |
 | push su `release/**` / `hotfix/**` | ✅ | ✅ build | ❌ | warning non bloccante | ❌ |
-| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante | **Automazione Release** |
+| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante | **tag + Release + bump**, solo a valle del verde |
 
-### Release Pipeline (`release.yml`)
-Quando un branch di release viene mergiato su `master`:
-1. **Tagging**: Crea un tag git `vX.Y.Z` basato sulla versione determinata dallo **Smart Versioning**.
-2. **GitHub Release**: Crea una release su GitHub con changelog automatico.
-3. **Smart Versioning Logic**:
-   - **Branch Name**: Estrae la versione (formato `X.Y.Z`) dalla fine del nome del branch sorgente (es. `release/1.2.0`, `release/v1.2.0`, `hotfix/1.2.1`).
-   - **PR Labels**: Cerca le etichette `major` o `minor` nella Pull Request mergiata per decidere l'incremento.
-   - **Default**: Se non trova nulla, usa la versione attuale del `pom.xml`.
-4. **Version Bump**: Incrementa la patch rispetto alla versione rilasciata tramite `mvn versions:set` e aggiorna `develop` (back-merge).
+### Release (`release.yml`, chiamato da `ci-cd.yml`)
+
+**La versione non viene indovinata dalla pipeline: la decide chi apre il branch di release.** Su `release/vX.Y.Z` (o `hotfix/vX.Y.Z`) si esegue
+
+```bash
+./mvnw versions:set -DnewVersion=X.Y.Z -DgenerateBackupPoms=false
+```
+
+e si committa. Così la versione entra nel diff della PR verso `master` e si rivede come qualsiasi altra modifica. Per una patch che parte direttamente da `develop` non serve fare niente: il pom è già alla patch successiva, scritta dal bump della release precedente.
+
+Al merge su `master`, il job `release` gira **dopo** `build-test` e `build-images` (`needs`), quindi:
+
+1. **Controlla che il tag non esista.** Un tag di release è immutabile: se `vX.Y.Z` c'è già, la run si ferma. Il caso tipico è un bump su `develop` fallito, che rimanderebbe la stessa versione al giro dopo.
+2. **Controlla che il nome del branch e i pom concordino.** Se il merge arriva da `release/*` o `hotfix/*`, la versione nel nome deve essere quella dei pom. Da un altro branch il confronto non è possibile e si usa il pom, con un `notice` nel log.
+3. **Controlla che la versione ricevuta sia quella del pom** a quel commit.
+4. **Crea tag e GitHub Release** con le note generate.
+5. **Porta `develop` alla patch successiva**, mai a scendere: se `develop` è già a una versione superiore (un hotfix rilasciato mentre `develop` sta su una minor successiva) il bump viene saltato.
+
+Il bump riscrive tutti e otto i pom su `develop`: **chi ha un feature branch aperto se lo ritrova in conflitto** al primo merge successivo, e va ribasato. È già costato un build rotto (commit `f3706ae`).
+
+#### Perché non è più un workflow a sé
+
+`release.yml` partiva su `push: master`, cioè **in parallelo** a `build-test`: tag e GitHub Release nascevano anche da una run rossa. E la versione veniva calcolata per conto proprio da nome del branch ed etichette della PR, senza mai essere scritta nei pom — così il tag e l'artefatto divergevano:
+
+| tag | `project.version` a quel commit | immagine su GHCR |
+|---|---|---|
+| `v1.0.0` | 1.0.0 | `:1.0.0` |
+| `v1.1.0` | **1.0.1** | `:1.0.1` |
+| `v1.1.2` | **1.1.1** | `:1.1.1` |
+| `v1.1.3` | 1.1.3 | `:1.1.3` |
+
+Due release su quattro. Al tag `v1.1.2` corrisponde l'immagine `:1.1.1`, e nessuna `:1.1.2` esiste: un rollback a quel tag non trova l'artefatto. Ora la versione è lo stesso output (`build-test.outputs.version`) che tagga le immagini, quindi tag, pom e immagine non possono più divergere.
+
+Rimossi nello stesso giro: il `git push --force` sui tag (un re-run spostava un tag già pubblicato), l'input `manual_version` (una versione forzata a mano ricreerebbe la divergenza) e la lettura delle etichette `major`/`minor`, che era la parte che indovinava. Per rilanciare una release fallita si usa *Re-run failed jobs* sulla run.
+
+Il filtro `paths` del trigger vale anche per la release: un merge su `master` che tocca solo `docs/**` non produce immagini e quindi non produce release.
 
 `feature/*` non è nei trigger `push`: è già coperto dall'evento `pull_request` verso `develop`. Averlo in entrambi consumerebbe due run per lo stesso commit.
 
@@ -152,7 +179,8 @@ Ipotesi residua non verificata: l'impostazione *Docker Desktop → Settings → 
 
 ## Punti aperti
 
-- **`project.version` è fisso a `0.0.1`** nel parent pom. Ogni push su `master` sovrascrive i tag `0.0.1` e `latest`; solo `sha-<short>` rende le immagini tracciabili. Serve una strategia di versioning (revision property, tag-driven, o `versions:set` in fase di release).
+- **Il flusso di release non è mai stato osservato su una run reale.** I tre controlli e il bump monotono sono stati eseguiti in locale su casi costruiti (tag esistente, branch incoerente, hotfix con `develop` più avanti, `1.9.9 → 1.9.10`), e i due YAML sono validati sintatticamente; ma il workflow intero gira solo al primo merge su `master`. Da guardare a quel giro: che il job `release` compaia come chiamata al reusable workflow, che il tag nasca **dopo** il push delle sei immagini, e che il bump su `develop` non sbatta contro la branch protection.
+- **Le due release già incoerenti restano tali.** `v1.1.0` (pom 1.0.1) e `v1.1.2` (pom 1.1.1) non vengono riscritte: i tag pubblicati non si spostano, e su GHCR manca l'immagine `:1.1.2`. Se serve un rollback a una di quelle versioni, l'immagine da cercare è quella con la versione del pom, non quella del tag.
 - **Kafka nei test non è ancora abilitato.** L'ambiente CI lo supporta, ma `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test`. Al momento non hanno classi di test, quindi nulla fallisce.
 - **Lint OpenAPI non bloccante** (`continue-on-error: true`): le spec non sono ancora allineate al ruleset `recommended` di Redocly. Togliere il flag per trasformarlo in un gate.
 - **`build-images` gira anche sulle PR** (6 immagini). Intercetta le rotture dei buildpack prima del merge, al costo di tempo runner. Per limitarlo a `master`, aggiungere una condizione `if` al job.
