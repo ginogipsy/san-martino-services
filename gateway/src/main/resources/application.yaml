@@ -20,6 +20,10 @@ spring:
                 - Path=/v1/stands/**
               filters:
                 - CircuitBreaker=standsCb,forward:/fallback/stands
+            - id: auth
+              uri: ${AUTH_URI:http://localhost:8085}
+              predicates:
+                - Path=/api/auth/**
             - id: sagas
               uri: ${SAGA_URI} # Verrà da Vault o variabile d'ambiente
               predicates:

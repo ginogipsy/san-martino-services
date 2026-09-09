@@ -57,6 +57,12 @@ Sui branch di sviluppo (**`develop`**, **`feature/*`**, **`release/*`**), la pip
 4. Clicca su **Approve** (per l'environment `san-martino-registry`).
 5. **Risultato**: Le immagini verranno pubblicate con il **nome del branch** (es. `feature-008-permessi`), pronte per essere scaricate su una VM di test.
 
+## 🧪 Qualità del Codice (Qodana)
+
+Ogni commit ed ogni Pull Request viene analizzata automaticamente da **JetBrains Qodana**.
+- Il report è consultabile nella tab **Checks** della Pull Request.
+- Assicuratevi che non vengano introdotti nuovi "Critical" o "High" issues prima del merge.
+
 ---
 
 ## 🤖 Cosa succede dietro le quinte?
