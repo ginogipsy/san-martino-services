@@ -34,9 +34,13 @@ docker compose up -d vault vault-init   # PREREQUISITO dei test, vedi sotto
 
 Un commit = un cambiamento logico. Se scopri un bug strada facendo, va in un commit separato con il *perché* nel corpo.
 
-**Branching: git flow.** `feature/*` → PR verso `develop`; `release/*` e `hotfix/*` → `master` con back-merge su `develop`. Il branch di produzione è **`master`**, non `main`. Il publish su GHCR avviene solo su `master`; il commit automatico delle docs solo su `develop`.
+**Branching: git flow.** `feature/*` → PR verso `develop`; `release/*` e `hotfix/*` → `master` con back-merge su `develop`. Il branch di produzione è **`master`**, non `main`. Il publish su GHCR avviene solo su `master` e sui tag `v*` (automatico), o su altri branch (manuale via "Approve").
 
 **Versioning & Release (Smart Versioning):** Il monorepo usa Maven `project.version`. Al merge su `master`, il workflow `release.yml` determina la versione dal nome del branch (es. `release/v1.1.0`) o dalle etichette PR (`major`, `minor`). Incrementa automaticamente la versione sul branch `develop` via `mvn versions:set`.
+
+**Docker Deployment (Ibrido):**
+- **Automatico**: Ogni push su `master` (tag `latest`) e ogni Git Tag `v*` (tag `X.Y.Z`) pubblica le immagini automaticamente.
+- **Manuale**: Per i branch feature/develop, la pipeline si ferma: serve un click su "Approve" (environment `nexus`) per pubblicare l'immagine con il nome del branch.
 
 ## Regole di lavoro
 

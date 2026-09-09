@@ -101,7 +101,7 @@ jobs:
     if: github.event_name != 'workflow_dispatch' && github.ref_name != 'master' && github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: ${{ (github.event_name != 'workflow_dispatch' && github.ref_name != 'master' && github.ref_type != 'tag') && 'nexus' || '' }}
+    environment: ${{ (github.event_name != 'workflow_dispatch' && github.ref_name != 'master' && github.ref_type != 'tag') && 'san-martino-registry' || '' }}
 
     permissions:
       actions: read          # serve per leggere la review history della run
