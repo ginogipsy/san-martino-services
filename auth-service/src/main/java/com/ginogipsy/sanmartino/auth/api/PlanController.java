@@ -24,6 +24,6 @@ public class PlanController {
     @PostMapping("/premium-feature")
     @PreAuthorize("principal.claims['user_plan'] == 'premium'")
     public String getPremiumData() {
-        return "Contenuto esclusivo per utenti Premium";
+        return "Contenuto esclusivo per utenti Premium!";
     }
 }
