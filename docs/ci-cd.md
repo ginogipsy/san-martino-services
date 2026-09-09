@@ -1,11 +1,12 @@
 # CI/CD — GitHub Actions
 
-Due workflow in `.github/workflows/`:
+I workflow in `.github/workflows/`:
 
 | File | Scopo |
 |---|---|
 | `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI, release |
 | `release.yml` | tag git, GitHub Release, bump della versione su `develop`. **Non ha un trigger proprio**: è un `workflow_call` invocato come ultimo job di `ci-cd.yml` |
+| `deploy.yml` | pubblicazione **a click** delle immagini di un branch su un registry. Doppio trigger: `workflow_call` da `ci-cd.yml` (il pallino dentro la run) e `workflow_dispatch` (bottone nel tab Actions) |
 | `qodana_code_quality.yml` | analisi statica JetBrains Qodana |
 
 ## Allineamento a git flow
@@ -16,12 +17,12 @@ feature/*  ──PR──►  develop  ──►  release/*  ──PR──►  
                        └────────── back-merge ────────────┘
 ```
 
-| Evento | build & test | immagini OCI | push GHCR | docs | Release/Tag |
-|---|---|---|---|---|---|
-| PR → `develop` / `master` / `release/**` | ✅ | ✅ build | ❌ | gate bloccante | ❌ |
-| push su `develop` | ✅ | ✅ build | ❌ | **commit automatico** | ❌ |
-| push su `release/**` / `hotfix/**` | ✅ | ✅ build | ❌ | warning non bloccante | ❌ |
-| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante | **tag + Release + bump**, solo a valle del verde |
+| Evento | build & test | immagini OCI | push GHCR | docs | Release/Tag | Deploy a click |
+|---|---|---|---|---|---|---|
+| PR → `develop` / `master` / `release/**` | ✅ | ✅ build | ❌ | gate bloccante | ❌ | ❌ (usa "Run workflow") |
+| push su `develop` | ✅ | ✅ build | ❌ | **commit automatico** | ❌ | ✅ pallino |
+| push su `release/**` / `hotfix/**` | ✅ | ✅ build | ❌ | warning non bloccante | ❌ | ✅ pallino |
+| push su `master` | ✅ | ✅ build | ✅ | warning non bloccante | **tag + Release + bump**, solo a valle del verde | ✅ pallino |
 
 ### Release (`release.yml`, chiamato da `ci-cd.yml`)
 
@@ -141,6 +142,64 @@ Doppia protezione contro la build ricorsiva innescata dal commit del bot:
 1. `docs/**` **non** è nei `paths` di trigger → un commit di sole docs non riattiva il workflow.
 2. Il messaggio di commit contiene `[skip ci]`.
 
+## Job 4 — Deploy manuale su registry (`deploy.yml`)
+
+L'equivalente del **terzo pallino** di GitLab: build automatica, test automatici, e poi un bottone che rilascia l'immagine.
+
+**Su GitHub Actions quel pallino non esiste.** Non c'è `when: manual`, non c'è un play button per singolo job. I due sostituti sono entrambi in `deploy.yml`, così condividono la stessa logica di pubblicazione:
+
+| | Cos'è | Dove si configura |
+|---|---|---|
+| **Environment approval** | Un job della **stessa run** resta in *pending* col bottone **Review deployments** → Approve. È il gemello del manual job. | `environment: nexus` in YAML **+** Settings → Environments (questa parte **non** è YAML) |
+| **`workflow_dispatch`** | Bottone **Run workflow** nel tab Actions, branch dal dropdown. È una run *nuova*, non un pallino di quella esistente. | Solo YAML |
+
+Il pallino nasce dal job `gate` (`needs: [build-test, build-images]` sul chiamante), quindi è premibile **solo con i primi due verdi** — la stessa semantica del manual job. Il gate non fa lavoro utile: esiste per tenere `environment:` su un job singolo, così l'approvazione è **un click solo** e poi partono i sei push in parallelo. Se stesse sul job a matrice, GitHub aprirebbe sei deployment.
+
+Su `workflow_dispatch` il gate è saltato: premere "Run workflow" **è già** l'atto manuale.
+
+### Prerequisito, da fare a mano prima del merge
+
+1. Settings → **Environments** → New environment → `nexus`
+2. **Required reviewers** → aggiungi te stesso → Save
+
+> **Perché prima.** Un `environment:` che non esiste viene creato da GitHub **implicitamente e senza protezioni**: in quel caso il deploy non sarebbe manuale, partirebbe da solo a ogni push. Per questo lo step `Require a human approval` interroga `GET /repos/{owner}/{repo}/actions/runs/{run_id}/approvals` e **fallisce** se nessuno ha approvato — un errore rumoroso invece di una pubblicazione silenziosa.
+
+I required reviewers sono gratuiti perché il repo è **pubblico**; su un repo privato servirebbe GitHub Pro/Team. Il bottone "Run workflow" compare nella UI solo quando `deploy.yml` è arrivato su **`master`** (il default branch): è una regola di GitHub, non una scelta nostra.
+
+### Destinazione configurabile
+
+Nessun placeholder finto nello YAML. Settings → Secrets and variables → Actions:
+
+| | Nome | Esempio | Se assente |
+|---|---|---|---|
+| Variable | `DEPLOY_REGISTRY` | `nexus.example.com:8891` | fallback su `ghcr.io` |
+| Variable | `DEPLOY_NAMESPACE` | `sanmartino` | fallback su `<owner>/sanmartino` |
+| Secret | `DEPLOY_USERNAME` | `ci-publisher` | **errore** se `DEPLOY_REGISTRY` è valorizzata |
+| Secret | `DEPLOY_PASSWORD` | token Nexus | **errore** se `DEPLOY_REGISTRY` è valorizzata |
+
+Finché le variabili non ci sono si pubblica su GHCR con `GITHUB_TOKEN`: il flusso funziona già oggi, senza un Nexus. Quando il Nexus arriverà basta valorizzarle — **nessuna modifica allo YAML**. Un namespace vuoto è legittimo: i repository Docker di Nexus sono spesso legati a una porta, con l'immagine nella radice.
+
+### Perché ricostruisce invece di promuovere
+
+`ci-cd.yml` pubblica su GHCR **solo** su push diretto a `master`: fuori da `master` le sei immagini vengono costruite e buttate via, quindi non c'è nulla da promuovere. `deploy.yml` rifà `spring-boot:build-image` sul commit selezionato. Il prezzo è una seconda passata di buildpacks; il guadagno è che la semantica di publish esistente resta intatta e nessuna immagine spuria finisce su GHCR a ogni push.
+
+La catena è la stessa del [Job 2](#job-2--immagini-oci) — build locale, `docker tag`, `docker push` — per lo stesso motivo documentato là. Anche il nome dell'immagine sorgente non è riscritto qui: `version` e `docker.image.prefix` arrivano come input da `build-test`, cioè **una lettura sola del pom per tutta la run**, e in `workflow_dispatch` vengono letti con `help:evaluate`.
+
+### Tag
+
+```
+<registry>/<namespace>/<service>:1.1.4-release-v1.2.0-06f4292   # immutabile
+<registry>/<namespace>/<service>:release-v1.2.0                 # mobile, ultimo deploy del branch
+```
+
+Lo slug del branch non è un semplice `/`→`-`: un tag OCI vuole primo carattere alfanumerico o `_`, poi `[a-zA-Z0-9._-]`, massimo 128 caratteri. Verificato su casi costruiti (`hotfix/UPPER_Case`, ref non-ASCII, nomi da 200 caratteri, `///`): nessun tag invalido in output.
+
+**`latest` non viene mai toccato.** Quel tag segue `master` ed è responsabilità di `ci-cd.yml`; un deploy di branch che lo spostasse lo renderebbe un puntatore a qualunque cosa qualcuno abbia premuto per ultimo.
+
+### Cosa aspettarsi nella UI
+
+Una run col gate non approvato **resta gialla** finché non si preme Approve o non la si cancella: è lo stesso comportamento di una pipeline "blocked" di GitLab, non un guasto. Il job `deploy` non è in `needs` di nessun altro, quindi non blocca né la release né le docs. Su `develop`, però, ogni push lascia una run in attesa: si accumulano, e vanno cancellate a mano se non interessano.
+
 ## Job Qodana
 
 `qodana.yaml` esegue un bootstrap prima dell'analisi:
@@ -179,6 +238,7 @@ Ipotesi residua non verificata: l'impostazione *Docker Desktop → Settings → 
 
 ## Punti aperti
 
+- **Il deploy manuale non è mai stato osservato su una run reale.** Lo schema dei tag è stato provato in locale su casi costruiti e i due YAML sono validati contro lo schema di Actions, ma l'environment, l'endpoint `approvals` e il deployment esistono solo lato GitHub: si vedono al primo push dopo aver configurato i required reviewers. Da guardare a quel giro: che il job compaia in *pending* col bottone, che senza reviewer configurati fallisca invece di pubblicare, e che un solo Approve liberi tutti e sei i job.
 - **Il flusso di release non è mai stato osservato su una run reale.** I tre controlli e il bump monotono sono stati eseguiti in locale su casi costruiti (tag esistente, branch incoerente, hotfix con `develop` più avanti, `1.9.9 → 1.9.10`), e i due YAML sono validati sintatticamente; ma il workflow intero gira solo al primo merge su `master`. Da guardare a quel giro: che il job `release` compaia come chiamata al reusable workflow, che il tag nasca **dopo** il push delle sei immagini, e che il bump su `develop` non sbatta contro la branch protection.
 - **Le due release già incoerenti restano tali.** `v1.1.0` (pom 1.0.1) e `v1.1.2` (pom 1.1.1) non vengono riscritte: i tag pubblicati non si spostano, e su GHCR manca l'immagine `:1.1.2`. Se serve un rollback a una di quelle versioni, l'immagine da cercare è quella con la versione del pom, non quella del tag.
 - **Kafka nei test non è ancora abilitato.** L'ambiente CI lo supporta, ma `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test`. Al momento non hanno classi di test, quindi nulla fallisce.

@@ -42,6 +42,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   La struttura dei sei servizi è impostata; tutti compilano (`./mvnw clean verify -DskipTests` → `BUILD SUCCESS`).
 *   **Pipeline CI/CD su GitHub Actions completata** (task #003): build & test su JDK 26, immagini OCI via Buildpacks per i sei servizi, push su GHCR limitato a `master`, rigenerazione automatica del reference OpenAPI in `docs/api/`. Analisi statica con Qodana. Dettagli in [ci-cd.md](./ci-cd.md).
 *   **Standard di codice formalizzati** in [CODING_STANDARDS.md](./CODING_STANDARDS.md); regole operative per gli agenti nel `CLAUDE.md` alla radice del repo.
+*   **Deploy manuale su registry** (task #009): `deploy.yml` pubblica a click le immagini del commit selezionato. GitHub Actions non ha il `when: manual` di GitLab, quindi il "pallino" è un job con `environment: nexus` protetto da *required reviewers* (configurazione a mano, non YAML), più un `workflow_dispatch` per i feature branch. Registry configurabile con fallback su GHCR. Non ancora osservato su una run reale — vedi [ci-cd.md](./ci-cd.md).
 *   **Logging & observability completata** (task #004): nuovo modulo `common-observability` (aspect AOP di logging con mascheramento dei dati sensibili, correlation id in MDC, log JSON in formato ECS), metriche Micrometer/Prometheus sui sei servizi, stack Prometheus + Loki + Promtail + Grafana nel `docker-compose.yml` con data source e dashboard provisionate. Dettagli e istruzioni di prova in [observability.md](./observability.md).
 
 ### Problemi risolti
@@ -71,11 +72,12 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 ## 5. Prossimi Passi (Priorità)
 
 1.  **Far girare la pipeline su una PR verso `develop`** e verificare le due incognite mai validate in locale: che `temurin:26` esista su `setup-java`, e che `EventsApiTest` passi con Vault più Testcontainers.
-2.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
-3.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
-4.  **Osservare la prima release col flusso nuovo** su un merge verso `master`: tag creato dopo il push delle immagini, versione coerente fra tag/pom/GHCR, bump su `develop` andato a buon fine.
-5.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
-6.  **Smoke test end-to-end via Saga.**
+2.  **Creare l'environment `nexus`** con i *required reviewers* (Settings → Environments), **prima** che `deploy.yml` arrivi su un branch con trigger `push`: un environment inesistente viene creato da GitHub senza protezioni e il deploy perderebbe il gate manuale.
+3.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
+4.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
+5.  **Osservare la prima release col flusso nuovo** su un merge verso `master`: tag creato dopo il push delle immagini, versione coerente fra tag/pom/GHCR, bump su `develop` andato a buon fine.
+6.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
+7.  **Smoke test end-to-end via Saga.**
 
 ## 6. Decisioni Prese in Precedenza
 
