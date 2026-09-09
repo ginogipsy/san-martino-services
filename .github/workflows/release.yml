@@ -1,139 +1,241 @@
-name: Release & Smart Versioning
+name: Release & Version Bump
+
+# ---------------------------------------------------------------------------
+# San Martino — tag git, GitHub Release, bump della versione su develop.
+#
+# Chiamato come ULTIMO job di ci-cd.yml (`needs: [build-test, build-images]`).
+# Prima era un workflow a sé su `push: master`, quindi girava in parallelo ai
+# test: tag e Release nascevano anche da una run rossa, e con una versione
+# calcolata in modo indipendente da quella delle immagini.
+#
+# La versione NON viene indovinata qui. Git flow la colloca sul branch di
+# release: chi apre `release/vX.Y.Z` esegue
+#
+#     ./mvnw versions:set -DnewVersion=X.Y.Z -DgenerateBackupPoms=false
+#
+# e la versione entra nel diff della PR, dove si rivede come ogni altra
+# modifica. Qui si fanno solo i controlli che il commit non può più smentire:
+#
+#   1. il tag non deve esistere        → un tag di release è immutabile
+#   2. il nome del branch release/*    → deve coincidere con i pom
+#   3. l'input della run chiamante     → deve coincidere con i pom
+#
+# Perché la logica "smart" precedente era sbagliata: derivava la versione da
+# nome del branch ed etichette della PR, ma non la scriveva mai nei pom. Il
+# tag e l'artefatto divergevano — nella storia del repo due volte su quattro
+# release (tag v1.1.0 su un pom 1.0.1, tag v1.1.2 su un pom 1.1.1), e le
+# immagini su GHCR, taggate leggendo il pom, portavano la versione sbagliata:
+# al tag v1.1.2 corrisponde l'immagine :1.1.1 e nessuna :1.1.2.
+# ---------------------------------------------------------------------------
 
 on:
-  push:
-    branches:
-      - master
-  workflow_dispatch: # Consente il lancio manuale da interfaccia GitHub
+  workflow_call:
     inputs:
-      manual_version:
-        description: 'Forza una versione specifica (es: 1.5.0). Lascia vuoto per logica automatica.'
-        required: false
-        default: ''
+      version:
+        description: Versione da rilasciare — la passa ci-cd.yml, ed è lo stesso valore con cui ha taggato le sei immagini
+        required: true
+        type: string
+
+# Default restrittivo; il job alza solo ciò che serve.
+permissions:
+  contents: read
 
 jobs:
   release:
-    name: Create Release & Bump Version
+    name: Tag & GitHub Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+
     permissions:
-      contents: write
-      pull-requests: read
+      contents: write        # tag, Release, commit del bump su develop
+      pull-requests: read    # per risalire alla PR mergiata (vedi step 2)
+
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      TAG: v${{ inputs.version }}
 
     steps:
-      - name: Checkout master
+      # fetch-depth: 0 → serve la storia completa (i tag, per il controllo 1;
+      # develop, per il bump finale).
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up JDK 26
-        uses: actions/setup-java@v5
-        with:
-          java-version: '26'
-          distribution: 'temurin'
-          cache: maven
+      # -------------------------------------------------------------------
+      # 1. Il tag non deve esistere.
+      #
+      # La versione precedente faceva `git tag -d` + `git push --force`
+      # "per evitare conflitti in caso di retry": un re-run spostava un tag
+      # già pubblicato su un altro commit e riscriveva la Release. Chi aveva
+      # verificato o messo in produzione quel tag si ritrovava codice diverso
+      # sotto lo stesso nome. Qui il conflitto è un errore, non una cosa da
+      # sovrascrivere.
+      # -------------------------------------------------------------------
+      - name: Refuse to move an existing tag
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            existing="$(git rev-parse --short "refs/tags/${TAG}^{commit}")"
+            echo "::error title=Tag già esistente::${TAG} esiste già e punta a ${existing}. Un tag di release è immutabile: porta la versione avanti su un branch release/* con 'versions:set' invece di ri-taggare. Se il bump su develop era fallito, questo è il sintomo."
+            exit 1
+          fi
+          echo "✅ ${TAG} è libero."
 
-      - name: Grant execute permission for mvnw
-        run: chmod +x mvnw
-
-      - name: Determine Version
-        id: versioning
+      # -------------------------------------------------------------------
+      # 2. Se il merge arriva da release/* o hotfix/*, il nome del branch e i
+      #    pom devono dire la stessa cosa. È il controllo che avrebbe fermato
+      #    entrambe le release incoerenti già presenti nella storia.
+      #
+      # Il branch si ricava dal messaggio del merge commit e, se manca (squash
+      # merge: il messaggio diventa "titolo (#N)"), dalla PR che contiene lo
+      # SHA. La regex vecchia — 'from \S+/\K\S+', greedy — prendeva solo la
+      # coda dopo l'ultimo '/', quindi leggeva "v1.1.0" da
+      # "ginogipsy/release/v1.1.0" ma anche "4.0.6" da
+      # "ginogipsy/feature/upgrade-spring-boot-4.0.6": un branch di
+      # aggiornamento dipendenze sarebbe stato rilasciato come v4.0.6.
+      # -------------------------------------------------------------------
+      - name: Check the version against the release branch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Legge la versione attuale dal pom.xml
-          CURRENT_VERSION=$(./mvnw help:evaluate -Dexpression=project.version -q -DforceStdout)
-          echo "Versione attuale nel POM: $CURRENT_VERSION"
-          
-          # 2. Analizza il contesto (PR o Branch)
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          PR_NUMBER=$(echo "$COMMIT_MSG" | grep -oP 'Merge pull request #\K\d+' || true)
-          
-          INC_TYPE="patch"
-          REQ_VERSION="${{ github.event.inputs.manual_version }}"
-          BRANCH_NAME=""
+          set -euo pipefail
 
-          if [ ! -z "$REQ_VERSION" ]; then
-            echo "Versione forzata manualmente da UI: $REQ_VERSION"
+          message="$(git log -1 --pretty=%B)"
+          branch="$(printf '%s' "$message" \
+                    | grep -oP '^Merge pull request #[0-9]+ from [^/]+/\K\S+' || true)"
+
+          if [ -z "$branch" ]; then
+            branch="$(gh pr list --search "$GITHUB_SHA" --state merged \
+                        --json headRefName -q '.[0].headRefName' 2>/dev/null || true)"
           fi
 
-          # Estrazione branch dal messaggio di commit
-          BRANCH_NAME=$(echo "$COMMIT_MSG" | grep -oP 'from \S+/\K\S+' || true)
-          
-          if [ ! -z "$PR_NUMBER" ] && [ -z "$BRANCH_NAME" ]; then
-            echo "Recupero info PR #$PR_NUMBER..."
-            BRANCH_NAME=$(gh pr view "$PR_NUMBER" --json headRefName -q '.headRefName' || true)
-          fi
-
-          if [ ! -z "$BRANCH_NAME" ]; then
-            echo "Branch rilevato: $BRANCH_NAME"
-            if [[ "$BRANCH_NAME" =~ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-              REQ_VERSION="${BASH_REMATCH[1]}"
-              echo "Versione forzata da branch: $REQ_VERSION"
-            fi
-            
-            if [ ! -z "$PR_NUMBER" ]; then
-              LABELS=$(gh pr view "$PR_NUMBER" --json labels -q '.labels[].name' 2>/dev/null || true)
-              if echo "$LABELS" | grep -iq "major"; then
-                INC_TYPE="major"
-              elif echo "$LABELS" | grep -iq "minor"; then
-                INC_TYPE="minor"
+          case "$branch" in
+            release/*|hotfix/*)
+              declared="$(printf '%s' "$branch" | grep -oP '[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+              if [ -z "$declared" ]; then
+                echo "::error title=Versione assente dal nome del branch::'${branch}' non termina con X.Y.Z, quindi non c'è nulla da confrontare con i pom. Usa la forma release/v1.2.0."
+                exit 1
               fi
-            fi
-          fi
-          
-          # 3. Calcolo versione di rilascio
-          if [ ! -z "$REQ_VERSION" ]; then
-            RELEASE_VERSION="$REQ_VERSION"
-          else
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-            if [ "$INC_TYPE" == "major" ]; then
-              RELEASE_VERSION="$((MAJOR + 1)).0.0"
-            elif [ "$INC_TYPE" == "minor" ]; then
-              RELEASE_VERSION="$MAJOR.$((MINOR + 1)).0"
-            else
-              RELEASE_VERSION="$CURRENT_VERSION"
-            fi
-          fi
-          
-          echo "RELEASE_VERSION=$RELEASE_VERSION" >> $GITHUB_ENV
-          echo "release_version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
-          echo "### 🚀 Release Target: \`$RELEASE_VERSION\`" >> $GITHUB_STEP_SUMMARY
+              if [ "$declared" != "$RELEASE_VERSION" ]; then
+                echo "::error title=Versione incoerente::'${branch}' dichiara ${declared} ma i pom sono a ${RELEASE_VERSION}. Sul branch di release esegui './mvnw versions:set -DnewVersion=${declared} -DgenerateBackupPoms=false', committa e ri-mergia: tag, pom e immagini devono portare la stessa versione."
+                exit 1
+              fi
+              echo "✅ '${branch}' coerente con i pom (${RELEASE_VERSION})."
+              ;;
+            *)
+              echo "::notice title=Nessun branch di release::Merge da '${branch:-origine sconosciuta}': niente da confrontare, si rilascia la versione dei pom (${RELEASE_VERSION})."
+              ;;
+          esac
 
-      - name: Create Git Tag
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+
+      - name: Restore Maven repository (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # -------------------------------------------------------------------
+      # 3. L'input arriva da build-test, che lo legge dallo stesso commit: se
+      #    non combacia, qualcuno ha invocato questo workflow a mano con una
+      #    versione scritta a mano. Meglio fermarsi che taggare a caso.
+      # -------------------------------------------------------------------
+      - name: Check the version against the pom
+        env:
+          MAVEN_ARGS: '-B -ntp'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Elimina tag locale se esistente (per evitare conflitti in caso di retry)
-          git tag -d "v${{ env.RELEASE_VERSION }}" 2>/dev/null || true
-          git tag -a "v${{ env.RELEASE_VERSION }}" -m "Release v${{ env.RELEASE_VERSION }}"
-          git push origin "v${{ env.RELEASE_VERSION }}" --force
+          set -euo pipefail
+          pom="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "$pom" != "$RELEASE_VERSION" ]; then
+            echo "::error title=Input incoerente::La run chiamante ha passato ${RELEASE_VERSION}, ma il pom a questo commit è ${pom}."
+            exit 1
+          fi
+          echo "✅ pom, immagini e tag sono su ${RELEASE_VERSION}."
+
+      - name: Create the tag
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/${TAG}"
+          echo "### 🚀 Release \`${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.RELEASE_VERSION }}
-          name: Release v${{ env.RELEASE_VERSION }}
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.TAG }}
           generate_release_notes: true
 
-      - name: Checkout develop for bump
+      # -------------------------------------------------------------------
+      # Bump di develop: la patch successiva a quella rilasciata, MAI a
+      # scendere. Il calcolo precedente era `RELEASE.patch + 1` incondizionato:
+      # un hotfix 1.1.4 rilasciato mentre develop stava già su 1.2.1 riportava
+      # develop a 1.1.5.
+      #
+      # Nota sul costo di questo passo: riscrive 8 pom su develop, quindi ogni
+      # feature branch aperto si prende un conflitto al successivo merge. È già
+      # accaduto (commit f3706ae, parent di common-observability rimasto
+      # indietro e reactor non più risolvibile). Chi ha branch aperti li
+      # ribasi dopo una release.
+      # -------------------------------------------------------------------
+      - name: Bump develop to the next patch
+        env:
+          MAVEN_ARGS: '-B -ntp'
         run: |
-          git checkout develop
-          git pull origin develop
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
-      - name: Bump Version for next cycle
-        run: |
-          REL_VERSION=${{ steps.versioning.outputs.release_version }}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$REL_VERSION"
-          NEXT_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          
-          echo "Aggiornamento develop alla versione: $NEXT_VERSION"
-          ./mvnw versions:set -DnewVersion="$NEXT_VERSION" -DgenerateBackupPoms=false
-          echo "NEXT_VERSION=$NEXT_VERSION" >> $GITHUB_ENV
+          # fetch esplicito: non dipendiamo da quali refspec abbia usato
+          # actions/checkout per popolare origin/*.
+          git fetch --quiet origin develop
+          git checkout -B develop FETCH_HEAD
 
-      - name: Commit and Push Bump
-        run: |
-          git add **/pom.xml pom.xml
-          # [skip ci] per evitare loop infiniti
-          git commit -m "chore(release): bump version to ${{ env.NEXT_VERSION }} [skip ci]"
-          git push origin develop
+          current="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          IFS=. read -r major minor patch <<< "$RELEASE_VERSION"
+          next="${major}.${minor}.$((patch + 1))"
+
+          # sort -V: se develop è già a una versione >= next (o esattamente
+          # next), scrivere next la farebbe regredire o sarebbe un no-op.
+          highest="$(printf '%s\n%s\n' "$current" "$next" | sort -V | tail -1)"
+          if [ "$highest" = "$current" ]; then
+            echo "develop è a ${current}, la patch successiva a ${RELEASE_VERSION} è ${next}: nessun bump."
+            echo "- develop resta a \`${current}\` (già ≥ \`${next}\`)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          ./mvnw -q versions:set -DnewVersion="$next" -DgenerateBackupPoms=false
+
+          # Pathspec git, non glob di bash: '*pom.xml' attraversa le directory,
+          # mentre '**/pom.xml' in bash senza globstar collassa a un solo livello.
+          git add -- '*pom.xml'
+
+          if git diff --cached --quiet; then
+            echo "::warning title=Bump a vuoto::versions:set non ha modificato nulla — develop resta a ${current}."
+            exit 0
+          fi
+
+          git commit -m "chore(release): bump version to ${next} [skip ci]"
+
+          # develop può aver ricevuto altri commit mentre girava la pipeline.
+          for attempt in 1 2 3; do
+            if git pull --rebase --autostash origin develop \
+               && git push origin HEAD:develop; then
+              echo "- develop portato a \`${next}\`" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "::notice::push su develop non riuscito (tentativo ${attempt}/3), ritento."
+            sleep $((attempt * 5))
+          done
+
+          echo "::error title=Bump non applicato::${TAG} è stato pubblicato, ma develop è rimasto a ${current}. Esegui il bump a mano, altrimenti la prossima release ritenterà ${RELEASE_VERSION} e si fermerà sul tag già esistente."
+          exit 1

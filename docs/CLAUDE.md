@@ -42,6 +42,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   La struttura dei sei servizi è impostata; tutti compilano (`./mvnw clean verify -DskipTests` → `BUILD SUCCESS`).
 *   **Pipeline CI/CD su GitHub Actions completata** (task #003): build & test su JDK 26, immagini OCI via Buildpacks per i sei servizi, push su GHCR limitato a `master`, rigenerazione automatica del reference OpenAPI in `docs/api/`. Analisi statica con Qodana. Dettagli in [ci-cd.md](./ci-cd.md).
 *   **Standard di codice formalizzati** in [CODING_STANDARDS.md](./CODING_STANDARDS.md); regole operative per gli agenti nel `CLAUDE.md` alla radice del repo.
+*   **Deploy manuale su registry** (task #009): `deploy.yml` pubblica a click le immagini del commit selezionato. GitHub Actions non ha il `when: manual` di GitLab, quindi il "pallino" è un job con `environment: nexus` protetto da *required reviewers* (configurazione a mano, non YAML), più un `workflow_dispatch` per i feature branch. Registry configurabile con fallback su GHCR. Non ancora osservato su una run reale — vedi [ci-cd.md](./ci-cd.md).
 *   **Logging & observability completata** (task #004): nuovo modulo `common-observability` (aspect AOP di logging con mascheramento dei dati sensibili, correlation id in MDC, log JSON in formato ECS), metriche Micrometer/Prometheus sui sei servizi, stack Prometheus + Loki + Promtail + Grafana nel `docker-compose.yml` con data source e dashboard provisionate. Dettagli e istruzioni di prova in [observability.md](./observability.md).
 *   **Correlation id attraverso Kafka** (task #008): l'interceptor producer viene registrato dall'autoconfig sul producer factory di Boot (`interceptor.classes`, in merge con quelli del servizio), il `RecordInterceptor` è agganciato a mano nella factory custom di `notifications-service`, e `SagaEventPublisher` ripristina l'MDC nel callback della `send`. Aggiunta la route del gateway verso `saga-orchestrator`, così le saghe non si avviano più scavalcandolo. **Validato a runtime sullo stack completo**: un id generato dal gateway arriva ai log di `notifications-service` passando per Kafka, e l'header è presente sui record del topic. Procedura riproducibile in [observability.md](./observability.md) §6.
 
@@ -64,19 +65,22 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 
 1. **Testcontainers non funziona su questa postazione Windows.** Docker Desktop 29.6.2 risponde HTTP 400 con un `Info` vuoto su entrambe le named pipe; tre ipotesi verificate e smentite. Non riguarda la CI (`ubuntu-latest` usa il socket Unix). Conseguenza: i test che dipendono da Testcontainers si validano solo in CI. Dettagli e tabella delle ipotesi in [ci-cd.md](./ci-cd.md).
 2. **Segreti hardcoded** in `application.yaml` (`token: my-root-token`) e in `docker-compose.yml` (`keycloak.client-secret`). Debito noto — vedi `java:S2068` in [CODING_STANDARDS.md](./CODING_STANDARDS.md).
-3. ~~**`project.version` fisso a `0.0.1`**~~ — **risolto, ma mai osservato su una run reale.** `release.yml` determina la versione da nome del branch, etichette PR o input manuale, tagga il repo e incrementa la patch su `develop`; `ci-cd.yml` pubblica su GHCR tre tag per servizio (`:${VERSION}`, `:sha-<7>`, `:latest`). La versione corrente del reactor è `1.1.3`. Letto dai workflow, non verificato su un merge su `master`.
-4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test`. Le classi di test ora esistono (`SagaEventPublisherTest`, `KafkaConsumerConfigTest`), ma sono unitarie: il transito su un broker è provato solo a mano.
+3. ~~**`project.version` fisso a `0.0.1`**~~ — superato: il reactor è a `1.1.4` e `ci-cd.yml` pubblica tre tag per servizio (`:${VERSION}`, `:sha-<7>`, `:latest`). Restava però rotto l'aggancio fra tag e artefatto: `release.yml` calcolava la versione da nome del branch ed etichette PR senza scriverla nei pom, quindi `v1.1.0` è stato taggato su un pom `1.0.1` e `v1.1.2` su un pom `1.1.1` (e su GHCR manca `:1.1.2`). Ora la versione si decide sul branch di release e la pipeline la verifica; **il flusso completo non è ancora stato osservato su una run reale**, e le due release già incoerenti non vengono riscritte. Dettagli in [ci-cd.md](./ci-cd.md).
+4. **Kafka nei test non abilitato**: `saga-orchestrator` e `notifications-service` non hanno `org.testcontainers:kafka` in scope `test` (per ora non hanno classi di test).
 5. **Smoke test `notifications-service`**: il ramo Kafka è validato end-to-end (task #008), **FCM no** — la prova è stata fatta con `sanmartino.fcm.enabled=false`, quindi il push è passato da `LoggingPushNotificationSender`.
 6. **Configurazione del realm Keycloak** via `docker-compose.yml` — da valutare.
 
 ## 5. Prossimi Passi (Priorità)
 
 1.  **Far girare la pipeline su una PR verso `develop`** e verificare le due incognite mai validate in locale: che `temurin:26` esista su `setup-java`, e che `EventsApiTest` passi con Vault più Testcontainers.
-2.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
-3.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
-4.  **Completare lo smoke test del `notifications-service`**: manca il solo invio reale via FCM, il ramo Kafka è validato.
-5.  **Rigenerare `docs/api/`**: c'è drift fra gli YAML in `api/` e gli HTML generati, e il gate della CI lo blocca. Catena esatta e versioni pinnate in [ci-cd.md](./ci-cd.md).
-6.  **Chiudere i punti aperti dell'osservabilità**: una riga di access log sul gateway (oggi punto cieco) e `org.testcontainers:kafka` per provare il transito in CI.
+2.  **Creare l'environment `nexus`** con i *required reviewers* (Settings → Environments), **prima** che `deploy.yml` arrivi su un branch con trigger `push`: un environment inesistente viene creato da GitHub senza protezioni e il deploy perderebbe il gate manuale.
+3.  **Configurare il secret `QODANA_TOKEN`** nelle repository secrets, altrimenti il job Qodana fallisce.
+4.  **Rimuovere i segreti hardcoded** da `application.yaml` e `docker-compose.yml`.
+5.  **Osservare la prima release col flusso nuovo** su un merge verso `master`: tag creato dopo il push delle immagini, versione coerente fra tag/pom/GHCR, bump su `develop` andato a buon fine.
+6.  **Completare lo smoke test del `notifications-service`** (Kafka + FCM).
+7.  **Smoke test end-to-end via Saga.**
+8.  **Rigenerare `docs/api/`**: c'è drift fra gli YAML in `api/` e gli HTML generati, e il gate della CI lo blocca. Catena esatta e versioni pinnate in [ci-cd.md](./ci-cd.md).
+9.  **Chiudere i punti aperti dell'osservabilità**: una riga di access log sul gateway (oggi punto cieco) e `org.testcontainers:kafka` per provare il transito in CI.
 
 ## 6. Decisioni Prese in Precedenza
 

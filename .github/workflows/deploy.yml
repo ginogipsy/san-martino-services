@@ -1,0 +1,302 @@
+name: Deploy image
+
+# ---------------------------------------------------------------------------
+# San Martino — pubblicazione manuale delle immagini di un branch su registry.
+#
+# È il "terzo pallino" del flusso GitLab (build automatica, test automatici,
+# release dell'immagine a click) portato su GitHub Actions, dove quel pallino
+# NON esiste: non c'è un play button per singolo job. I due sostituti sono
+# entrambi qui, sullo stesso file, così condividono tutta la logica:
+#
+#   workflow_call      chiamato da ci-cd.yml con needs: [build-test,
+#                      build-images]. Il job `gate` dichiara
+#                      `environment: nexus`: se quell'environment ha dei
+#                      *required reviewers*, la run si ferma e mostra il
+#                      bottone "Review deployments". Quello è il pallino.
+#
+#   workflow_dispatch  bottone "Run workflow" nel tab Actions, con il branch
+#                      scelto dal dropdown. Serve per i feature/*, che in
+#                      ci-cd.yml girano solo come pull_request (e da un
+#                      merge-ref di PR non si pubblica: è un commit sintetico
+#                      che non esiste su nessun branch).
+#
+# ATTENZIONE — l'unico pezzo non esprimibile in YAML: i required reviewers si
+# configurano in Settings → Environments → nexus. Se l'environment non esiste,
+# GitHub lo crea implicitamente SENZA protezioni e il deploy partirebbe da solo
+# a ogni push. Lo step "Require a human approval" trasforma quel caso in un
+# fallimento rumoroso invece che in una pubblicazione silenziosa.
+#
+# Le immagini vengono RICOSTRUITE qui, non promosse: ci-cd.yml pubblica su GHCR
+# solo su push diretto a master, quindi fuori da master non c'è nulla da
+# promuovere. Il costo è una seconda passata di buildpacks; il vantaggio è che
+# la semantica di publish esistente resta intatta e nessuna immagine spuria
+# finisce su GHCR a ogni push.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Versione da pubblicare — la passa ci-cd.yml, ed è lo stesso valore letto una volta sola da build-test
+        required: false
+        type: string
+      image_prefix:
+        description: Prefisso delle immagini costruite dai buildpack (docker.image.prefix del pom). Se vuoto viene letto dal pom
+        required: false
+        type: string
+      ref_name:
+        description: Branch di provenienza, usato per lo slug dei tag. Se vuoto si usa github.ref_name
+        required: false
+        type: string
+      service:
+        description: '"all" oppure il nome di un singolo servizio'
+        required: false
+        default: all
+        type: string
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Servizio da pubblicare
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - events-service
+          - stands-service
+          - auth-service
+          - gateway
+          - saga-orchestrator
+          - notifications-service
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '26'
+  JAVA_DISTRIBUTION: 'temurin'
+  MAVEN_ARGS: '-B -ntp'
+
+jobs:
+
+  # =========================================================================
+  # 1. GATE — il pallino cliccabile. Non fa lavoro utile: esiste solo per
+  #    tenere `environment: nexus` su un job singolo.
+  #
+  # Perché non sul job a matrice: GitHub apre un deployment per job, quindi
+  # sei job protetti significano sei deployment, e il momento in cui la
+  # seconda tornata viene liberata non è deterministico. Un gate solo => un
+  # click solo, poi sei push in parallelo.
+  #
+  # Su workflow_dispatch il gate è saltato: premere "Run workflow" È già
+  # l'atto manuale, un secondo Approve sarebbe una doppia conferma. Dentro un
+  # workflow_call `github.event_name` è l'evento del CHIAMANTE (push), quindi
+  # questa condizione distingue i due percorsi.
+  # =========================================================================
+  gate:
+    name: Approve deploy
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: nexus
+
+    permissions:
+      actions: read          # serve per leggere la review history della run
+
+    steps:
+      - name: Require a human approval
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          approvals="$(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/approvals" \
+            --jq '[.[] | select((.state // "") | ascii_downcase == "approved")] | length' \
+            2>/dev/null || echo 0)"
+
+          if [ "${approvals:-0}" -lt 1 ]; then
+            echo "::error title=Environment non protetto::Questo job è partito senza che nessuno abbia premuto Approve, quindi l'environment 'nexus' non ha required reviewers (o non esisteva e GitHub l'ha creato implicitamente). Vai in Settings → Environments → nexus → Required reviewers e aggiungiti, altrimenti il deploy non è manuale: parte a ogni push."
+            exit 1
+          fi
+
+          echo "✅ Deploy approvato da un revisore ($approvals approvazioni sulla run)."
+
+  # =========================================================================
+  # 2. PUSH — un job per servizio, in parallelo. Ricalca build-images di
+  #    ci-cd.yml: stesso setup JDK, stessa cache read-only, stessa catena
+  #    build locale → docker tag → docker push.
+  # =========================================================================
+  push-images:
+    name: Publish · ${{ matrix.service }}
+    needs: gate
+    # always(): senza questo, `needs: gate` con gate skippato (dispatch)
+    # salterebbe anche questo job.
+    if: always() && (needs.gate.result == 'success' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      packages: write        # fallback GHCR con GITHUB_TOKEN
+
+    strategy:
+      fail-fast: false       # un servizio rotto non deve nascondere gli altri
+      matrix:
+        service: ${{ fromJSON(inputs.service == 'all' && '["events-service","stands-service","auth-service","gateway","saga-orchestrator","notifications-service"]' || format('["{0}"]', inputs.service)) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # cache/restore (non cache): la popola solo il job build-test di
+      # ci-cd.yml; qui, come nei job matrice, è read-only.
+      - name: Restore Maven repository (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # -------------------------------------------------------------------
+      # Destinazione. Nessun placeholder finto nello YAML: se le variabili
+      # non sono configurate si pubblica su GHCR con GITHUB_TOKEN, che
+      # funziona già oggi e non costa nulla. Quando il Nexus esisterà basta
+      # valorizzare DEPLOY_REGISTRY/DEPLOY_NAMESPACE + i due secret, senza
+      # toccare questo file.
+      # -------------------------------------------------------------------
+      - name: Resolve the target registry
+        id: target
+        env:
+          DEPLOY_REGISTRY: ${{ vars.DEPLOY_REGISTRY }}
+          DEPLOY_NAMESPACE: ${{ vars.DEPLOY_NAMESPACE }}
+          DEPLOY_USERNAME: ${{ secrets.DEPLOY_USERNAME }}
+          DEPLOY_PASSWORD: ${{ secrets.DEPLOY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          host="${DEPLOY_REGISTRY:-}"
+          namespace="${DEPLOY_NAMESPACE:-}"
+
+          if [ -n "$host" ]; then
+            # Credenziali obbligatorie: senza, docker/login-action fallirebbe
+            # con un errore che non dice quale pezzo manca.
+            if [ -z "${DEPLOY_USERNAME:-}" ] || [ -z "${DEPLOY_PASSWORD:-}" ]; then
+              echo "::error title=Credenziali mancanti::La variabile DEPLOY_REGISTRY è impostata su '${host}', ma i secret DEPLOY_USERNAME e/o DEPLOY_PASSWORD no. Configurali in Settings → Secrets and variables → Actions, oppure svuota DEPLOY_REGISTRY per tornare al fallback su GHCR."
+              exit 1
+            fi
+          else
+            host='ghcr.io'
+            namespace="${GITHUB_REPOSITORY_OWNER}/sanmartino"
+            echo "::notice title=Fallback su GHCR::DEPLOY_REGISTRY non è configurata: si pubblica su ghcr.io con GITHUB_TOKEN."
+          fi
+
+          # I nomi di repository OCI ammettono solo minuscole. Un namespace
+          # vuoto è legittimo: i repository Docker di Nexus sono spesso legati
+          # a una porta e l'immagine sta nella radice.
+          host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+          namespace="$(printf '%s' "$namespace" | tr '[:upper:]' '[:lower:]')"
+
+          if [ -n "$namespace" ]; then
+            repository="${host}/${namespace}/${{ matrix.service }}"
+          else
+            repository="${host}/${{ matrix.service }}"
+          fi
+
+          echo "host=$host"             >> "$GITHUB_OUTPUT"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "→ $repository"
+
+      - name: Log in to the target registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.target.outputs.host }}
+          username: ${{ steps.target.outputs.host == 'ghcr.io' && github.actor || secrets.DEPLOY_USERNAME }}
+          password: ${{ steps.target.outputs.host == 'ghcr.io' && secrets.GITHUB_TOKEN || secrets.DEPLOY_PASSWORD }}
+
+      # -------------------------------------------------------------------
+      # Coordinate dell'immagine costruita, e tag di destinazione.
+      #
+      # Da workflow_call arrivano `version` e `image_prefix`: sono gli stessi
+      # valori con cui build-images ha taggato le immagini della run, letti
+      # una volta sola dal pom. Da workflow_dispatch non arriva niente e li
+      # leggiamo qui — dal pom, non riscritti a mano in questo file, perché
+      # il nome dell'immagine costruita è deciso là
+      # (`${docker.image.prefix}/<service>:${project.version}`, es.
+      # events-service/pom.xml:175).
+      #
+      # Regole di un tag OCI: primo carattere alfanumerico o '_', poi
+      # [a-zA-Z0-9._-], massimo 128 caratteri. Lo slug del branch va quindi
+      # normalizzato, non solo sostituito nei '/'.
+      # -------------------------------------------------------------------
+      - name: Compute source image and target tags
+        id: tags
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PREFIX: ${{ inputs.image_prefix }}
+          REF_NAME: ${{ inputs.ref_name != '' && inputs.ref_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ]; then
+            version="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          fi
+
+          prefix="${INPUT_PREFIX:-}"
+          if [ -z "$prefix" ]; then
+            prefix="$(./mvnw -q help:evaluate -Dexpression=docker.image.prefix -DforceStdout)"
+          fi
+
+          slug="$(printf '%s' "$REF_NAME" \
+                  | tr '[:upper:]' '[:lower:]' \
+                  | tr '/' '-' \
+                  | sed 's/[^a-z0-9._-]/-/g; s/^[-._]\+//' \
+                  | cut -c1-90)"
+          # Un ref fatto solo di caratteri non ammessi lascerebbe uno slug
+          # vuoto, e il tag mobile sarebbe un tag vuoto.
+          [ -n "$slug" ] || slug='branch'
+
+          echo "built=${prefix}/${{ matrix.service }}:${version}" >> "$GITHUB_OUTPUT"
+          echo "immutable=${version}-${slug}-${GITHUB_SHA::7}"    >> "$GITHUB_OUTPUT"
+          echo "moving=$slug"                                     >> "$GITHUB_OUTPUT"
+
+      - name: Build OCI image (Cloud Native Buildpacks)
+        run: |
+          ./mvnw -pl :${{ matrix.service }} -am -DskipTests \
+                 package spring-boot:build-image \
+                 -Dspring-boot.build-image.publish=false
+
+      # -------------------------------------------------------------------
+      # `latest` NON viene toccato: quel tag segue master ed è responsabilità
+      # di ci-cd.yml. Un deploy di branch che lo spostasse renderebbe `latest`
+      # un puntatore a qualunque cosa qualcuno abbia premuto per ultimo.
+      # -------------------------------------------------------------------
+      - name: Tag & push
+        env:
+          BUILT: ${{ steps.tags.outputs.built }}
+          REPOSITORY: ${{ steps.target.outputs.repository }}
+          IMMUTABLE: ${{ steps.tags.outputs.immutable }}
+          MOVING: ${{ steps.tags.outputs.moving }}
+        run: |
+          set -euo pipefail
+
+          docker tag "$BUILT" "${REPOSITORY}:${IMMUTABLE}"
+          docker tag "$BUILT" "${REPOSITORY}:${MOVING}"
+
+          docker push "${REPOSITORY}:${IMMUTABLE}"
+          docker push "${REPOSITORY}:${MOVING}"
+
+          {
+            echo "### 🚚 ${{ matrix.service }}"
+            echo ""
+            echo "- \`${REPOSITORY}:${IMMUTABLE}\` (immutabile)"
+            echo "- \`${REPOSITORY}:${MOVING}\` (mobile, ultimo deploy del branch)"
+          } >> "$GITHUB_STEP_SUMMARY"
