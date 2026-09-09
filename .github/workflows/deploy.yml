@@ -92,13 +92,16 @@ jobs:
   # l'atto manuale, un secondo Approve sarebbe una doppia conferma. Dentro un
   # workflow_call `github.event_name` è l'evento del CHIAMANTE (push), quindi
   # questa condizione distingue i due percorsi.
+  #
+  # NOVITÀ: Su branch 'master' o su un Git Tag il gate è saltato automaticamente 
+  # per permettere il Continuous Deployment senza intervento manuale.
   # =========================================================================
   gate:
     name: Approve deploy
-    if: github.event_name != 'workflow_dispatch'
+    if: github.event_name != 'workflow_dispatch' && github.ref_name != 'master' && github.ref_type != 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: nexus
+    environment: ${{ (github.event_name != 'workflow_dispatch' && github.ref_name != 'master' && github.ref_type != 'tag') && 'san-martino-registry' || '' }}
 
     permissions:
       actions: read          # serve per leggere la review history della run
@@ -130,9 +133,9 @@ jobs:
   push-images:
     name: Publish · ${{ matrix.service }}
     needs: gate
-    # always(): senza questo, `needs: gate` con gate skippato (dispatch)
+    # always(): senza questo, `needs: gate` con gate skippato (dispatch, master o tag)
     # salterebbe anche questo job.
-    if: always() && (needs.gate.result == 'success' || github.event_name == 'workflow_dispatch')
+    if: always() && (needs.gate.result == 'success' || needs.gate.result == 'skipped' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -264,9 +267,19 @@ jobs:
           # vuoto, e il tag mobile sarebbe un tag vuoto.
           [ -n "$slug" ] || slug='branch'
 
+          # Logica richiesta: 'latest' per master, tag name per i tag, nome del branch per gli altri.
+          if [ "$github.ref_type" = "tag" ]; then
+            # Rimuove la 'v' iniziale se presente (es. v1.2.0 -> 1.2.0)
+            moving="${REF_NAME#v}"
+          elif [ "$REF_NAME" = "master" ]; then
+            moving='latest'
+          else
+            moving="$slug"
+          fi
+
           echo "built=${prefix}/${{ matrix.service }}:${version}" >> "$GITHUB_OUTPUT"
           echo "immutable=${version}-${slug}-${GITHUB_SHA::7}"    >> "$GITHUB_OUTPUT"
-          echo "moving=$slug"                                     >> "$GITHUB_OUTPUT"
+          echo "moving=$moving"                                   >> "$GITHUB_OUTPUT"
 
       - name: Build OCI image (Cloud Native Buildpacks)
         run: |

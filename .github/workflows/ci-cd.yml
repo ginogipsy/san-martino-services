@@ -27,6 +27,8 @@ on:
       - develop
       - 'release/**'
       - 'hotfix/**'
+    tags:
+      - 'v*'
     paths:
       # Codice e build
       - '**/*.java'
@@ -278,9 +280,6 @@ jobs:
       # Il goal build-image è no-op sui progetti `pom`, quindi il parent nel
       # reactor non causa problemi.
       # Test già eseguiti nel job precedente => -DskipTests.
-      # `publish=false`: l'immagine viene caricata nel daemon Docker locale;
-      # il push lo facciamo con `docker push` (nessuna modifica al pom, e ci
-      # permette di applicare più tag).
       # ---------------------------------------------------------------------
       - name: Build OCI image (Cloud Native Buildpacks)
         run: |
@@ -288,33 +287,9 @@ jobs:
                  package spring-boot:build-image \
                  -Dspring-boot.build-image.publish=false
 
-      - name: Tag & push to GHCR
-        if: env.PUBLISH == 'true'
+      - name: Image built (verify only)
         run: |
-          set -euo pipefail
-          base="${IMAGE_PREFIX}/${{ matrix.service }}"
-          built="${base}:${VERSION}"
-          sha_tag="${base}:sha-${GITHUB_SHA::7}"
-
-          docker tag "$built" "$sha_tag"
-          docker tag "$built" "${base}:latest"
-
-          docker push "$built"
-          docker push "$sha_tag"
-          docker push "${base}:latest"
-
-          {
-            echo "### 🐳 ${{ matrix.service }}"
-            echo ""
-            echo "- \`$built\`"
-            echo "- \`$sha_tag\`"
-            echo "- \`${base}:latest\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Image built (no publish)
-        if: env.PUBLISH != 'true'
-        run: |
-          echo "### 🐳 ${{ matrix.service }} — build OK, publish skipped (ref: ${GITHUB_REF})" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 🐳 ${{ matrix.service }} — build OK (verify only)" >> "$GITHUB_STEP_SUMMARY"
           docker image ls "${IMAGE_PREFIX}/${{ matrix.service }}"
 
   # =========================================================================
