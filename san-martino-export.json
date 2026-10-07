@@ -7,11 +7,12 @@
       "clientId": "admin-cli-wrapper",
       "enabled": true,
       "protocol": "openid-connect",
-      "publicClient": false,
+      "publicClient": true,
       "bearerOnly": false,
-      "serviceAccountsEnabled": true,
-      "secret": "YOUR_CLIENT_SECRET_PLACEHOLDER",
-      "directAccessGrantsEnabled": true
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:4200/*", "http://localhost:4200/"],
+      "webOrigins": ["http://localhost:4200"]
     }
   ]
 }

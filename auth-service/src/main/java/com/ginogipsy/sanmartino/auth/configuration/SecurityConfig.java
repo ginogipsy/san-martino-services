@@ -19,30 +19,31 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
-
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+                // Integrazione CORS corretta con la sorgente definita sotto
+                .cors(AbstractHttpConfigurer::disable)
+                .csrf(AbstractHttpConfigurer::disable)
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new CustomAuthenticationEntryPoint()))
-                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()))
                 .logout(logout -> logout
                         .logoutUrl("/api/logout")
                         .addLogoutHandler((request, response, authentication) -> {
-                            // Qui puoi inserire logica custom, come chiamare userService.logoutUser()
+                            // Logica custom di logout
                         })
                         .logoutSuccessHandler((request, response, authentication) -> {
                             response.setStatus(HttpServletResponse.SC_OK);
                         })
                 )
-                .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Login libero
-                        .anyRequest()
-                        .authenticated()
+                        .requestMatchers("/api/auth/**").permitAll() // Accesso libero alle API di login/auth
+                        .anyRequest().authenticated()
                 )
+                // Una sola configurazione per OAuth2 Resource Server
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                 );
+
         return http.build();
     }
 
@@ -52,14 +53,17 @@ public class SecurityConfig {
         return jwtConverter;
     }
 
-    @Bean
+   /* @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:4200")); // URL della tua UI
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowedOrigins(List.of("http://localhost:4200")); // Origine consentita
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS")); // Includi OPTIONS
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept"));
+        configuration.setAllowCredentials(true); // Necessario se invii cookie o Authorization header con credenziali
+        configuration.setMaxAge(3600L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
-    }
+    }*/
 }
