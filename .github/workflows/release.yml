@@ -213,7 +213,7 @@ jobs:
             exit 0
           fi
 
-          ./mvnw -q versions:set -Dproperty=revision -DnewVersion="$next" -DgenerateBackupPoms=false
+          ./mvnw -q versions:set-property -Dproperty=revision -DnewVersion="$next" -DgenerateBackupPoms=false
 
           # Pathspec git, non glob di bash: '*pom.xml' attraversa le directory,
           # mentre '**/pom.xml' in bash senza globstar collassa a un solo livello.
