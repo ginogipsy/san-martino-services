@@ -268,7 +268,7 @@ jobs:
           [ -n "$slug" ] || slug='branch'
 
           # Logica richiesta: 'latest' per master, tag name per i tag, nome del branch per gli altri.
-          if [ "$github.ref_type" = "tag" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             # Rimuove la 'v' iniziale se presente (es. v1.2.0 -> 1.2.0)
             moving="${REF_NAME#v}"
           elif [ "$REF_NAME" = "master" ]; then
