@@ -79,7 +79,7 @@ public class AuthService {
                     token.getExpiresIn(),
                     token.getTokenType()
             );
-        } catch (NotAuthorizedException e) {
+        } catch (NotAuthorizedException _) {
             throw new RuntimeException("Credenziali errate");
         }
     }
