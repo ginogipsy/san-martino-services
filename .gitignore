@@ -34,3 +34,7 @@ out/
 **/service-account*.json
 **/secrets/
 **/credentials/
+
+# Flatten Maven Plugin generated POMs
+.flattened-pom.xml
+**/.flattened-pom.xml
