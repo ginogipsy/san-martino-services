@@ -1,0 +1,98 @@
+# ---------------------------------------------------------------------------
+# Patch comune ai sei Deployment Spring Boot (label component=backend).
+#
+# Il `name` qui è un segnaposto: con un `target` per label Kustomize applica il
+# patch a ogni Deployment selezionato, ignorando il nome. Il container si chiama
+# `app` in tutti i servizi apposta, perché lo strategic merge lo trova per nome.
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-defaults
+spec:
+  revisionHistoryLimit: 3
+  template:
+    metadata:
+      annotations:
+        # Contratto con Prometheus (k8s/components/observability): scrape dei
+        # pod annotati. La porta la dichiara ogni servizio nel proprio file.
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /actuator/prometheus
+    spec:
+      # Il token della ServiceAccount non serve finché Vault usa l'auth TOKEN;
+      # il componente vault-k8s-auth lo rimonta.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          envFrom:
+            - configMapRef:
+                name: sanmartino-runtime
+            - configMapRef:
+                name: sanmartino-topology
+          env:
+            # Non opzionale di proposito: senza Secret il pod resta in
+            # CreateContainerConfigError, invece di partire col token di
+            # sviluppo scritto in application.yaml.
+            - name: SPRING_CLOUD_VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: token
+          # Spring Boot riconosce Kubernetes (KUBERNETES_SERVICE_HOST) e attiva
+          # da solo i gruppi health liveness/readiness.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            # Fino a 150 s per partire: Flyway e la lettura da Vault stanno
+            # nell'avvio, e su un nodo kind carico la JVM è lenta.
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            # Lascia il tempo a Service e Ingress di togliere il pod dagli
+            # endpoint prima che Spring inizi lo shutdown graceful.
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            # Nessun limite di CPU: l'avvio della JVM ne usa molta per pochi
+            # secondi, e il throttling lo allungherebbe oltre la startupProbe.
+            # La heap è il 75% di questo limite (JAVA_TOOL_OPTIONS nel Dockerfile).
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Tomcat scrive in /tmp (upload multipart, work dir).
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

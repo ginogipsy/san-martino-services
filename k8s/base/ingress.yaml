@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Unico punto di ingresso: API e pannello sullo stesso host. Il pannello chiama
+# l'API con URL relativi, quindi niente CORS e niente URL per ambiente nel
+# bundle Angular.
+#
+# Nessun host e nessun TLS qui: li aggiungono gli overlay (sanmartino.local in
+# locale, il dominio reale con cert-manager in cloud). Le regole sono in
+# `.spec.rules[0]` apposta, perché gli overlay la estendono con un patch JSON.
+#
+# I servizi interni (events, stands, saga, auth) NON sono esposti: si passa
+# sempre dal gateway, che applica circuit breaker e correlation id.
+# ---------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sanmartino
+spec:
+  # API Ingress standard, controller Traefik sia in locale che in cloud.
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          # Route del gateway (gateway/src/main/resources/application.yaml).
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  name: http
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: gateway
+                port:
+                  name: http
+          # Tutto il resto è il pannello (fallback SPA nel suo nginx.conf).
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: user-panel
+                port:
+                  name: http
