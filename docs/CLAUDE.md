@@ -20,7 +20,7 @@ Applicazione per la gestione di eventi locali (ispirata al borgo di Arce) che co
     *   Flyway per il versioning del database.
     *   Per i test, non si userà H2, ma si seguirà un approccio più moderno.
 *   **Docker & CI/CD:**
-    *   Containerizzazione tramite plugin `spring-boot:build-image`.
+    *   Containerizzazione tramite `Dockerfile` multi-stage nella radice (task #032; prima `spring-boot:build-image`).
     *   Pipeline automatizzate con GitHub Actions.
 *   **Testing & Osservabilità:**
     *   Mockito, WebTestClient per i test.
@@ -88,7 +88,7 @@ Abbiamo optato per un approccio moderno, evitando soluzioni datate come Eureka.
 *   **Keycloak:** Integrato come modulo interno, non più servizio esterno.
 *   **Java Version:** Java 26.
 *   **Spring Boot Version:** 4.0.6.
-*   **Docker Build:** `spring-boot:build-image` plugin.
+*   **Docker Build:** `Dockerfile` multi-stage su Temurin 26 (task #032). Sostituisce `spring-boot:build-image`: il builder Paketo non include più una JRE 26.
 *   **CI/CD:** GitHub Actions.
 *   **API Design:** API-first con OpenAPI Generator.
 *   **Database Migrations:** Flyway.

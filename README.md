@@ -8,7 +8,7 @@ Monorepo Maven multi-module per il backend di **"Le cantine di San Martino"** (A
 - Spring Boot 4.0.6 / Spring Framework 7
 - PostgreSQL + Flyway
 - API-first con OpenAPI 3 + openapi-generator
-- Build immagini via `spring-boot:build-image` (Buildpacks) → GHCR
+- Build immagini via `Dockerfile` multi-stage (Temurin 26) → GHCR
 - Testing: JUnit 5 + Testcontainers + MockMvc
 - Observability: aspect AOP + log JSON (ECS) → Loki, metriche Actuator → Prometheus, UI Grafana
 
@@ -54,8 +54,8 @@ docker compose up -d vault vault-init
 cd events-service
 ../mvnw spring-boot:run
 
-# 4. Builda l'immagine Docker (locale, no push)
-../mvnw spring-boot:build-image
+# 4. Builda l'immagine Docker (locale, no push) — dalla radice del repo
+cd .. && docker build --build-arg SERVICE=events-service -t sanmartino/events-service:dev .
 
 # 5. OpenAPI UI (springdoc-openapi)
 # http://localhost:8081/swagger-ui.html

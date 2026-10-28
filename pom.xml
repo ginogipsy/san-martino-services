@@ -45,7 +45,7 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-boot.version>4.0.6</spring-boot.version>
 
-        <!-- Docker image config (Buildpacks) -->
+        <!-- Nome delle immagini OCI: lo usano Dockerfile e workflow (docker.image.prefix) -->
         <docker.image.registry>ghcr.io</docker.image.registry>
         <docker.image.owner>ginogipsy</docker.image.owner>
         <docker.image.prefix>${docker.image.registry}/${docker.image.owner}/sanmartino</docker.image.prefix>
