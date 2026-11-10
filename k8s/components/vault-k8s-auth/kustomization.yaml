@@ -1,0 +1,24 @@
+# ---------------------------------------------------------------------------
+# I servizi si autenticano su Vault con la propria ServiceAccount (auth method
+# Kubernetes) invece che con un token statico. È la modalità del cloud; in
+# locale si attiva aggiungendo questo componente all'overlay, perché il Vault
+# dev di vault-dev ha già policy e ruoli.
+#
+# Lato Vault serve la configurazione di vault-dev/scripts/configure.sh: una
+# policy e un ruolo per servizio, ruolo legato alla ServiceAccount omonima del
+# namespace e all'audience `vault`. Con questo componente il Secret vault-token
+# non serve più ai servizi (a vault-dev sì, è il suo root token).
+#
+# Il gateway non ha segreti, quindi parte anche se il login su Vault fallisce
+# (Spring Cloud Vault lo segnala con un WARN 403). Per verificarlo si guarda il
+# log: "secret/gateway not resolvable: Not found" vuol dire login riuscito e
+# path semplicemente vuoto.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - path: patch.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component=backend

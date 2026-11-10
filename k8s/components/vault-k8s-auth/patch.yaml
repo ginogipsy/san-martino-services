@@ -1,0 +1,45 @@
+# ---------------------------------------------------------------------------
+# Auth KUBERNETES al posto del token statico, per i sei Deployment Spring Boot
+# (label component=backend). Come spring-boot-defaults.yaml, il `name` è un
+# segnaposto: conta il target per label in kustomization.yaml.
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-k8s-auth
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          env:
+            # Il token statico sparisce dal pod: è proprio ciò che questo
+            # componente elimina.
+            - name: SPRING_CLOUD_VAULT_TOKEN
+              $patch: delete
+            - name: SPRING_CLOUD_VAULT_AUTHENTICATION
+              value: KUBERNETES
+            # Ruolo Vault = nome del servizio, letto dalla label del pod: un
+            # solo patch per sei servizi, e nessun nome da tenere allineato.
+            - name: SPRING_CLOUD_VAULT_KUBERNETES_ROLE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: SPRING_CLOUD_VAULT_KUBERNETES_SERVICEACCOUNTTOKENFILE
+              value: /var/run/secrets/vault/token
+          volumeMounts:
+            - name: vault-sa-token
+              mountPath: /var/run/secrets/vault
+              readOnly: true
+      volumes:
+        # Token della ServiceAccount con audience `vault`, non quello standard:
+        # vale solo per il login su Vault (i ruoli richiedono quell'audience) e
+        # l'API server lo rifiuta. automountServiceAccountToken resta false.
+        # Il kubelet lo rinnova prima della scadenza; Spring lo rilegge a ogni login.
+        - name: vault-sa-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: vault
+                  expirationSeconds: 3600
+                  path: token

@@ -19,8 +19,9 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/path: /actuator/prometheus
     spec:
-      # Il token della ServiceAccount non serve finché Vault usa l'auth TOKEN;
-      # il componente vault-k8s-auth lo rimonta.
+      # Nessun servizio parla con l'API di Kubernetes, quindi niente token per
+      # l'API. Con l'auth KUBERNETES (componente vault-k8s-auth) il pod riceve
+      # un token proiettato con audience `vault`, valido solo per Vault.
       automountServiceAccountToken: false
       # Le variabili *_SERVICE_HOST/*_PORT dei Service del namespace non servono
       # (si usa il DNS) e finirebbero fra le property di Spring per relaxed binding.
