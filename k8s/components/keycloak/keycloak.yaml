@@ -1,0 +1,135 @@
+# keycloak — identity provider del realm `san-martino`, in modalità produzione
+# (`start`, non `start-dev` come nel compose) sia in locale sia in cloud: così il
+# cluster locale prova la stessa configurazione che va in produzione.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+    app.kubernetes.io/component: identity
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keycloak
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keycloak
+        app.kubernetes.io/component: identity
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      # Utente `keycloak` dell'immagine. Il filesystem radice resta scrivibile:
+      # in modalità `start` Keycloak ricompila la propria configurazione
+      # (driver del DB, health) al primo avvio, dentro /opt/keycloak.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 0
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.8.2
+          # Importa i realm in /opt/keycloak/data/import al primo avvio; un
+          # realm già presente nel DB non viene sovrascritto.
+          args: ["start", "--import-realm"]
+          envFrom:
+            - configMapRef:
+                name: keycloak-config
+          env:
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: jdbc:postgresql://postgres-keycloak:5432/keycloak
+            - name: KC_DB_USERNAME
+              value: keycloak
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-keycloak
+                  key: password
+            # Admin iniziale: creato solo se il DB non ha ancora utenti admin.
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: username
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin
+                  key: password
+            # TLS termina all'Ingress: fra Ingress e pod il traffico è HTTP, e
+            # Keycloak ricostruisce schema e host dagli header X-Forwarded-*.
+            - name: KC_HTTP_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: xforwarded
+            # /health/* sulla porta di management (9000), non su quella pubblica.
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_METRICS_ENABLED
+              value: "true"
+            - name: JAVA_OPTS_KC_HEAP
+              value: -XX:MaxRAMPercentage=70.0
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          startupProbe:
+            httpGet:
+              path: /health/started
+              port: management
+            periodSeconds: 5
+            # Il primo avvio in modalità `start` include build e import del realm.
+            failureThreshold: 60
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  labels:
+    app.kubernetes.io/name: keycloak
+spec:
+  selector:
+    app.kubernetes.io/name: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: management
+      port: 9000
+      targetPort: management

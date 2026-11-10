@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Keycloak, usato sia in locale sia in cloud. Il database è sempre il Service
+# `postgres-keycloak`: in locale lo crea infra-local, in cloud l'overlay lo
+# sostituisce con un ExternalName verso il database gestito.
+#
+# Secret richiesti, che fornisce l'overlay (mai committati):
+#   postgres-keycloak   → chiave `password`
+#   keycloak-admin      → chiavi `username`, `password`
+#
+# HOSTNAME E ISSUER. Il claim `iss` dei token è costruito da KC_HOSTNAME, e
+# auth-service usa lo stesso URL (issuer-uri) sia per validare i token sia per
+# chiamare il token endpoint. Quindi l'URL deve essere identico per chi emette
+# e per chi valida, e raggiungibile dai pod.
+#
+# Il default è l'indirizzo interno: oggi nessun client parla con Keycloak dal
+# browser (il login passa da auth-service con password grant, e il realm non ha
+# identity provider), quindi Keycloak non ha bisogno di essere esposto. Un
+# overlay che lo esponga (admin console, login social) cambia KC_HOSTNAME
+# nell'URL pubblico, e allora quell'URL deve risolversi anche dentro il cluster.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - keycloak.yaml
+
+configMapGenerator:
+  - name: keycloak-config
+    literals:
+      - KC_HOSTNAME=http://keycloak:8080
+  # Lo stesso file che il docker-compose.yml monta in /opt/keycloak/data/import:
+  # una sola copia del realm, qui, perché Kustomize non legge file fuori dalla
+  # cartella della kustomization.
+  - name: keycloak-realm
+    files:
+      - san-martino-export.json
