@@ -2,6 +2,7 @@ package com.ginogipsy.sanmartino.auth.configuration;
 
 import com.ginogipsy.sanmartino.auth.component.CustomAuthenticationEntryPoint;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,6 +32,10 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll() // Accesso libero alle API di login/auth
+                        // Probe di Kubernetes e scrape di Prometheus arrivano senza token: con
+                        // authenticated() ricevevano 401 e il kubelet uccideva il pod. L'health
+                        // anonimo espone solo lo stato (show-details: when-authorized).
+                        .requestMatchers(EndpointRequest.to("health", "prometheus")).permitAll()
                         .anyRequest().authenticated()
                 )
                 // Una sola configurazione per OAuth2 Resource Server
