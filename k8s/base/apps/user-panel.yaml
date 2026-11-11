@@ -43,6 +43,13 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 5
+          lifecycle:
+            # Come i servizi (spring-boot-defaults.yaml): nginx si spegne in un
+            # attimo, e senza questa attesa le richieste che arrivano prima che
+            # l'Ingress tolga il pod dagli endpoint finiscono nel vuoto.
+            preStop:
+              sleep:
+                seconds: 5
           resources:
             requests:
               cpu: 10m
