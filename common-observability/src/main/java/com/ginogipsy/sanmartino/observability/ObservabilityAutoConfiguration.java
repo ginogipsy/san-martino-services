@@ -1,10 +1,18 @@
 package com.ginogipsy.sanmartino.observability;
 
+import com.ginogipsy.sanmartino.observability.audit.AuditAspect;
+import com.ginogipsy.sanmartino.observability.audit.AuditPublisher;
+import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver;
+import com.ginogipsy.sanmartino.observability.audit.KafkaAuditPublisher;
+import com.ginogipsy.sanmartino.observability.audit.NoOpAuditPublisher;
+import com.ginogipsy.sanmartino.observability.audit.SecurityContextAuditUserResolver;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationInterceptor;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor;
 import jakarta.servlet.Filter;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -18,6 +26,7 @@ import org.springframework.core.Ordered;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Collection;
@@ -75,6 +84,29 @@ public class ObservabilityAutoConfiguration {
     public CorrelationIdPropagationInterceptor correlationIdPropagationInterceptor(ObservabilityProperties properties) {
         ObservabilityProperties.Correlation correlation = properties.correlation();
         return new CorrelationIdPropagationInterceptor(correlation.headerName(), correlation.mdcKey());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public AuditUserResolver auditUserResolver() {
+        return new SecurityContextAuditUserResolver();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(AuditPublisher.class)
+    public AuditPublisher noOpAuditPublisher() {
+        return new NoOpAuditPublisher();
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "sanmartino.observability.audit", name = "enabled", matchIfMissing = true)
+    @ConditionalOnMissingBean
+    public AuditAspect auditAspect(
+            @Value("${spring.application.name:unknown-service}") String serviceId,
+            ObservabilityProperties properties,
+            AuditPublisher auditPublisher,
+            AuditUserResolver auditUserResolver) {
+        return new AuditAspect(serviceId, properties.correlation().mdcKey(), auditPublisher, auditUserResolver);
     }
 
     /**
@@ -151,6 +183,20 @@ public class ObservabilityAutoConfiguration {
 
         private static String className(Object value) {
             return value instanceof Class<?> type ? type.getName() : String.valueOf(value);
+        }
+    }
+
+    @Configuration
+    @ConditionalOnClass(KafkaTemplate.class)
+    @ConditionalOnProperty(prefix = "sanmartino.observability.audit", name = "enabled", matchIfMissing = true)
+    public static class KafkaAuditConfiguration {
+
+        @Bean
+        @ConditionalOnBean(KafkaTemplate.class)
+        @ConditionalOnMissingBean(AuditPublisher.class)
+        public AuditPublisher kafkaAuditPublisher(KafkaTemplate<String, Object> kafkaTemplate,
+                                                  ObservabilityProperties properties) {
+            return new KafkaAuditPublisher(kafkaTemplate, properties.audit().topic());
         }
     }
 }
