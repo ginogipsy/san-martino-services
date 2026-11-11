@@ -404,10 +404,15 @@ traffico, p95, 4xx/5xx, heap, invocazioni fallite estratte dai log e il pannello
 **Explore → Prometheus**:
 
 ```promql
-sum by (application) (rate(http_server_requests_seconds_count[1m]))
-histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket[5m])))
+sum by (application) (rate(http_server_requests_seconds_count{uri!~"/actuator.*"}[1m]))
+histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{uri!~"/actuator.*"}[5m])))
 sum by (application) (jvm_memory_used_bytes{area="heap"})
 ```
+
+Il filtro `uri!~"/actuator.*"` toglie probe e scrape, che passano anche loro da
+`http_server_requests`: in Kubernetes, con le probe ogni 5 e 10 secondi, valgono
+circa 0,37 richieste al secondo per servizio anche a sistema fermo, e coprirebbero
+il traffico vero. I pannelli HTTP della dashboard usano lo stesso filtro.
 
 ---
 
