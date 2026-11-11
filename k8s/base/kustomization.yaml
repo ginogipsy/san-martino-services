@@ -1,0 +1,75 @@
+# ---------------------------------------------------------------------------
+# Base Kustomize: SOLO l'applicativo (6 servizi Spring Boot + pannello Angular),
+# uguale in ogni ambiente. Infrastruttura (Postgres, Kafka, Keycloak, Vault) e
+# osservabilità stanno in k8s/components/ e le attivano gli overlay.
+#
+#   kubectl kustomize k8s/base            # render, senza applicare
+#
+# La base non si applica da sola: le immagini non hanno tag (li fissa l'overlay
+# con `images:`) e il Secret `vault-token` lo fornisce l'overlay.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sanmartino
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: sanmartino
+    # I selector dei Deployment sono immutabili: una label comune aggiunta lì
+    # costringerebbe a ricreare i Deployment al primo cambio.
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - namespace.yaml
+  - apps/gateway.yaml
+  - apps/auth-service.yaml
+  - apps/events-service.yaml
+  - apps/stands-service.yaml
+  - apps/saga-orchestrator.yaml
+  - apps/notifications-service.yaml
+  - apps/user-panel.yaml
+  - ingress.yaml
+
+# Configurazione NON segreta. Il suffisso hash che il generator aggiunge al nome
+# fa ripartire i pod quando un valore cambia: con una ConfigMap statica
+# resterebbero sulla configurazione vecchia fino al prossimo restart.
+configMapGenerator:
+  # Runtime comune ai sei servizi.
+  - name: sanmartino-runtime
+    literals:
+      # Log JSON (ECS) su stdout: li raccoglie l'agente dei log dal nodo.
+      - LOG_CONSOLE_FORMAT=ecs
+      # Niente file di log nel container: con il filesystem in sola lettura non
+      # ci sarebbe dove scriverli, e su un emptyDir la rotazione di Spring Boot
+      # (10 MB × 7 giorni, nessun tetto totale) potrebbe far evictare il pod.
+      - LOGGING_FILE_NAME=
+      - LOG_ENVIRONMENT=kubernetes
+      # application.yaml punta Vault su localhost: qui è il Service `vault`.
+      # Gli overlay che usano un Vault esterno sovrascrivono questi tre valori.
+      - SPRING_CLOUD_VAULT_HOST=vault
+      - SPRING_CLOUD_VAULT_PORT=8200
+      - SPRING_CLOUD_VAULT_SCHEME=http
+  # Topologia interna: come i servizi si trovano fra loro nel cluster. Non è un
+  # segreto e non cambia fra ambienti, quindi sta qui e non in Vault. Le
+  # variabili d'ambiente hanno precedenza sulle property importate da Vault
+  # (verificato), quindi questi valori vincono sui `localhost` dei secret KV.
+  - name: sanmartino-topology
+    literals:
+      # gateway: placeholder delle route in application.yaml
+      - EVENTS_URI=http://events-service:8081
+      - STANDS_URI=http://stands-service:8082
+      - SAGA_URI=http://saga-orchestrator:8083
+      - AUTH_URI=http://auth-service:8085
+      # saga-orchestrator: clients.events-base-url / clients.stands-base-url
+      - CLIENTS_EVENTSBASEURL=http://events-service:8081
+      - CLIENTS_STANDSBASEURL=http://stands-service:8082
+
+# Tutto ciò che è uguale per i sei Deployment Spring Boot (sicurezza, probe,
+# risorse, configurazione) sta in un solo patch, applicato per label.
+patches:
+  - path: spring-boot-defaults.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component=backend

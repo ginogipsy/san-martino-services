@@ -28,7 +28,7 @@ name: Deploy image
 #
 # Le immagini vengono RICOSTRUITE qui, non promosse: ci-cd.yml pubblica su GHCR
 # solo su push diretto a master, quindi fuori da master non c'è nulla da
-# promuovere. Il costo è una seconda passata di buildpacks; il vantaggio è che
+# promuovere. Il costo è una seconda build dell'immagine; il vantaggio è che
 # la semantica di publish esistente resta intatta e nessuna immagine spuria
 # finisce su GHCR a ogni push.
 # ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ on:
         required: false
         type: string
       image_prefix:
-        description: Prefisso delle immagini costruite dai buildpack (docker.image.prefix del pom). Se vuoto viene letto dal pom
+        description: Prefisso delle immagini costruite da build-images (docker.image.prefix del pom). Se vuoto viene letto dal pom
         required: false
         type: string
       ref_name:
@@ -127,8 +127,9 @@ jobs:
 
   # =========================================================================
   # 2. PUSH — un job per servizio, in parallelo. Ricalca build-images di
-  #    ci-cd.yml: stesso setup JDK, stessa cache read-only, stessa catena
-  #    build locale → docker tag → docker push.
+  #    ci-cd.yml: stesso Dockerfile, stessa catena build locale → docker tag
+  #    → docker push. Il JDK qui serve solo a leggere versione e prefisso
+  #    dal pom quando il workflow parte da workflow_dispatch.
   # =========================================================================
   push-images:
     name: Publish · ${{ matrix.service }}
@@ -232,8 +233,7 @@ jobs:
       # una volta sola dal pom. Da workflow_dispatch non arriva niente e li
       # leggiamo qui — dal pom, non riscritti a mano in questo file, perché
       # il nome dell'immagine costruita è deciso là
-      # (`${docker.image.prefix}/<service>:${project.version}`, es.
-      # events-service/pom.xml:175).
+      # (`${docker.image.prefix}/<service>:${project.version}`).
       #
       # Regole di un tag OCI: primo carattere alfanumerico o '_', poi
       # [a-zA-Z0-9._-], massimo 128 caratteri. Lo slug del branch va quindi
@@ -281,11 +281,11 @@ jobs:
           echo "immutable=${version}-${slug}-${GITHUB_SHA::7}"    >> "$GITHUB_OUTPUT"
           echo "moving=$moving"                                   >> "$GITHUB_OUTPUT"
 
-      - name: Build OCI image (Cloud Native Buildpacks)
+      - name: Build OCI image (Dockerfile)
+        env:
+          BUILT: ${{ steps.tags.outputs.built }}
         run: |
-          ./mvnw -pl :${{ matrix.service }} -am -DskipTests \
-                 package spring-boot:build-image \
-                 -Dspring-boot.build-image.publish=false
+          docker build --build-arg SERVICE=${{ matrix.service }} -t "$BUILT" .
 
       # -------------------------------------------------------------------
       # `latest` NON viene toccato: quel tag segue master ed è responsabilità

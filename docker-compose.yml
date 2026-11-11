@@ -107,7 +107,7 @@ services:
       # Il path deve puntare a un file esistente: con un path inesistente Docker
       # crea al suo posto una directory, --import-realm non trova nessun .json e
       # il realm `san-martino` non esiste (auth-service non ha piu' un issuer).
-      - ./san-martino-export.json:/opt/keycloak/data/import/realm.json:ro
+      - ./k8s/components/keycloak/san-martino-export.json:/opt/keycloak/data/import/realm.json:ro
     depends_on:
       postgres-keycloak:
         condition: service_healthy # Keycloak parte solo quando PostgreSQL risponde effettivamente all'healthcheck
@@ -225,7 +225,12 @@ services:
     restart: "no" # Questo servizio deve essere eseguito solo una volta e poi terminare
 
   auth-service:
-    build: ./auth-service
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: auth-service
     ports:
       - "8085:8085"
     environment:
@@ -242,7 +247,12 @@ services:
       kafka: # E da Kafka se necessario
         condition: service_healthy
   events-service:
-    build: ./events-service
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: events-service
     ports:
       - "8081:8081"
     environment:
@@ -257,7 +267,12 @@ services:
       kafka:
         condition: service_healthy
   gateway:
-    build: ./gateway
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: gateway
     ports:
       - "8080:8080"
     environment:
@@ -278,7 +293,12 @@ services:
       kafka:
         condition: service_healthy
   notifications-service:
-    build: ./notifications-service
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: notifications-service
     ports:
       - "8084:8084"
     environment:
@@ -291,7 +311,12 @@ services:
       kafka:
         condition: service_healthy
   saga-orchestrator:
-    build: ./saga-orchestrator
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: saga-orchestrator
     ports:
       - "8083:8083"
     environment:
@@ -312,7 +337,12 @@ services:
       auth-service: # Saga orchestra anche auth-service
         condition: service_healthy
   stands-service:
-    build: ./stands-service
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: stands-service
     ports:
       - "8082:8082"
     environment:

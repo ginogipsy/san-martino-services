@@ -1,0 +1,38 @@
+# ---------------------------------------------------------------------------
+# Osservabilità: Prometheus (metriche), Loki (log), Alloy (raccolta log),
+# Grafana (UI). È lo stack del docker-compose.yml portato in Kubernetes, con
+# le stesse label: la dashboard "San Martino — overview" e le query di
+# docs/observability.md funzionano senza modifiche.
+#
+# Cosa cambia rispetto al compose:
+#   - Prometheus scopre i pod annotati invece di avere sei target statici;
+#   - Alloy sostituisce Promtail (end-of-life) e legge i log dall'API di
+#     Kubernetes invece che dai file: un agente su /var/log/pods vorrebbe un
+#     hostPath, vietato dal profilo `restricted` del namespace.
+#
+# Secret richiesti, che fornisce l'overlay (mai committati):
+#   grafana-admin   → chiavi `username`, `password`
+#
+# Nessun Ingress qui: esporre Grafana (e come) è una scelta dell'overlay.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - prometheus.yaml
+  - loki.yaml
+  - alloy.yaml
+  - grafana.yaml
+
+# Data source, provider e dashboard di Grafana e configurazione di Loki: gli
+# stessi file che monta il compose, generati come ConfigMap da docker/.
+components:
+  - ../../../docker
+
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus/prometheus.yml
+  - name: alloy-config
+    files:
+      - alloy/config.alloy

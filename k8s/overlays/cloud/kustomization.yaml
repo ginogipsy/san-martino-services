@@ -1,0 +1,178 @@
+# ---------------------------------------------------------------------------
+# Overlay del CLOUD (GKE, EKS, DigitalOcean: niente di specifico di un
+# provider). Stesso applicativo del locale; cambia ciò che sta intorno:
+#
+#   locale (overlays/local)              cloud (questo)
+#   Postgres e Kafka nel cluster         servizi gestiti, raggiunti via Vault
+#   Vault dev con seed                   Vault vero, esterno, configurato a mano
+#   HTTP su sanmartino.local             HTTPS con certificati di cert-manager
+#   1 replica                            2 repliche, HPA, PodDisruptionBudget
+#
+# Prima del primo deploy, nell'ordine:
+#
+#   1. Traefik (controller Ingress) e cert-manager nel cluster, ognuno una
+#      volta per cluster. Il chart crea l'IngressClass `traefik` e un Service
+#      LoadBalancer su 80/443; i tre --set fanno il redirect permanente da
+#      HTTP a HTTPS (chiavi verificate con `helm template` sul chart 42.3.1):
+#        helm install traefik traefik --repo https://traefik.github.io/charts \
+#          --version 42.3.1 -n traefik --create-namespace \
+#          --set ports.web.http.redirections.entryPoint.to=websecure \
+#          --set ports.web.http.redirections.entryPoint.scheme=https \
+#          --set ports.web.http.redirections.entryPoint.permanent=true
+#        kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml
+#      Il DNS di PUBLIC_HOST e GRAFANA_HOST deve puntare al LoadBalancer di
+#      Traefik, altrimenti la challenge HTTP-01 non arriva.
+#   2. I ClusterIssuer (email da cambiare in cluster/cluster-issuers.yaml):
+#        kubectl apply -k k8s/overlays/cloud/cluster
+#   3. I valori di questo file marcati DA CAMBIARE.
+#   4. Vault: policy e ruoli con k8s/components/vault-dev/scripts/configure.sh,
+#      passando token e CA del reviewer (vault-auth.yaml):
+#        kubectl apply -k k8s/overlays/cloud   # crea anche il Secret del reviewer
+#        kubectl -n sanmartino get secret vault-auth-token -o jsonpath='{.data.token}' | base64 -d > reviewer.jwt
+#        kubectl -n sanmartino get secret vault-auth-token -o jsonpath='{.data.ca\.crt}' | base64 -d > k8s-ca.crt
+#        VAULT_ADDR=… VAULT_TOKEN=… VAULT_K8S_HOST=<URL dell'API server> \
+#          VAULT_K8S_CA_CERT=k8s-ca.crt VAULT_K8S_REVIEWER_JWT=reviewer.jwt \
+#          sh k8s/components/vault-dev/scripts/configure.sh
+#      e i secret KV di ogni servizio con i valori di produzione: le chiavi
+#      sono quelle di k8s/components/vault-dev/scripts/seed-secrets.sh.
+#   5. I Secret che non arrivano da Vault, creati a mano nel namespace (meglio
+#      se leggendo i valori da Vault, mai da file nel repo):
+#        ghcr-pull           docker-registry, token GitHub con read:packages
+#        postgres-keycloak   password      (utente del DB gestito di Keycloak)
+#        keycloak-admin      username, password
+#        grafana-admin       username, password
+#   6. kubectl apply -k k8s/overlays/cloud
+#
+# Niente di tutto questo è stato provato su un cloud vero: è validato con il
+# render, con kubeconform e su kind (vedi la storia git del task #032).
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sanmartino
+
+resources:
+  - ../../base
+  - grafana-ingress.yaml
+  - vault-auth.yaml
+  - availability.yaml
+
+components:
+  - ../../components/keycloak
+  - ../../components/vault-k8s-auth
+  - ../../components/observability
+
+# DA CAMBIARE a ogni rilascio, o da CI con `kustomize edit set image`: i tag
+# che pubblica deploy.yml sui tag git v* (X.Y.Z, senza la `v`).
+images:
+  - name: ghcr.io/ginogipsy/sanmartino/gateway
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/auth-service
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/events-service
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/stands-service
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/saga-orchestrator
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/notifications-service
+    newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/san-martino-user-panel
+    newTag: "0.0.2"
+
+configMapGenerator:
+  # DA CAMBIARE. Valori del cluster, iniettati nei manifest dai replacements
+  # qui sotto. `local-config`: Kustomize la usa e non la emette.
+  - name: cloud-settings
+    options:
+      disableNameSuffixHash: true
+      annotations:
+        config.kubernetes.io/local-config: "true"
+    literals:
+      - PUBLIC_HOST=sanmartino.example.org
+      - GRAFANA_HOST=grafana.sanmartino.example.org
+      # letsencrypt-staging per la prima prova, poi letsencrypt-prod.
+      - CLUSTER_ISSUER=letsencrypt-staging
+      # Database gestito di Keycloak (i servizi gestiti chiedono TLS).
+      - KEYCLOAK_DB_URL=jdbc:postgresql://keycloak-db.example.org:5432/keycloak?sslmode=require
+  # DA CAMBIARE: indirizzo del Vault di produzione.
+  - name: sanmartino-runtime
+    behavior: merge
+    literals:
+      - SPRING_CLOUD_VAULT_HOST=vault.example.org
+      - SPRING_CLOUD_VAULT_PORT=8200
+      - SPRING_CLOUD_VAULT_SCHEME=https
+      - LOG_ENVIRONMENT=production
+      # In produzione l'aspect di logging non scrive ingressi e uscite (solo a
+      # DEBUG) ma continua a segnalare invocazioni lente e guasti.
+      - LOGGING_LEVEL_COM_GINOGIPSY_SANMARTINO=INFO
+
+patches:
+  - path: ingress-tls.yaml
+  - path: scaling.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component in (backend,frontend)
+  - path: pull-secret.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component in (backend,frontend)
+  - path: resources.yaml
+    target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/component=backend
+  # Repliche decise dall'HPA (availability.yaml): il campo non deve esserci.
+  - target:
+      kind: Deployment
+      name: gateway|events-service|stands-service
+    patch: |-
+      - op: remove
+        path: /spec/replicas
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: cloud-settings
+      fieldPath: data.PUBLIC_HOST
+    targets:
+      - select:
+          kind: Ingress
+          name: sanmartino
+        fieldPaths:
+          - spec.rules.0.host
+          - spec.tls.0.hosts.0
+        options:
+          create: true
+  - source:
+      kind: ConfigMap
+      name: cloud-settings
+      fieldPath: data.GRAFANA_HOST
+    targets:
+      - select:
+          kind: Ingress
+          name: grafana
+        fieldPaths:
+          - spec.rules.0.host
+          - spec.tls.0.hosts.0
+  - source:
+      kind: ConfigMap
+      name: cloud-settings
+      fieldPath: data.CLUSTER_ISSUER
+    targets:
+      - select:
+          kind: Ingress
+        fieldPaths:
+          - metadata.annotations.[cert-manager.io/cluster-issuer]
+  # Un replacement e non un merge su keycloak-config: quella ConfigMap nasce
+  # nel componente, e i generator di questo overlay girano prima dei
+  # componenti. Il valore in `env` del Deployment è quello che conta.
+  - source:
+      kind: ConfigMap
+      name: cloud-settings
+      fieldPath: data.KEYCLOAK_DB_URL
+    targets:
+      - select:
+          kind: Deployment
+          name: keycloak
+        fieldPaths:
+          - spec.template.spec.containers.[name=keycloak].env.[name=KC_DB_URL].value

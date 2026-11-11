@@ -1,0 +1,21 @@
+# ---------------------------------------------------------------------------
+# Infrastruttura dati SOLO per il cluster locale: i cinque Postgres e Kafka del
+# docker-compose.yml, tradotti in StatefulSet con volume persistente.
+#
+# In cloud questo componente NON si usa: database e broker sono servizi gestiti
+# (Cloud SQL / RDS, Kafka gestito) e i servizi li trovano tramite i secret Vault.
+#
+# Secret richiesti, che fornisce l'overlay (mai committati):
+#   postgres-events, postgres-stands, postgres-saga, postgres-auth,
+#   postgres-keycloak                  → chiave `password`
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - postgres/events.yaml
+  - postgres/stands.yaml
+  - postgres/saga.yaml
+  - postgres/auth.yaml
+  - postgres/keycloak.yaml
+  - kafka.yaml

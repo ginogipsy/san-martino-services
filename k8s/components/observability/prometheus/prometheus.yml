@@ -1,0 +1,45 @@
+# Prometheus — versione Kubernetes di docker/prometheus/prometheus.yml.
+#
+# Al posto dei sei target statici su host.docker.internal: service discovery dei
+# pod del proprio namespace, filtrati per annotazione. Il contratto lo scrive
+# k8s/base/spring-boot-defaults.yaml:
+#
+#   prometheus.io/scrape: "true"
+#   prometheus.io/path:   /actuator/prometheus
+#   prometheus.io/port:   <porta del servizio>
+#
+# Un pod nuovo con quelle annotazioni viene raccolto da solo, senza toccare
+# questo file.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    environment: kubernetes
+
+scrape_configs:
+  - job_name: kubernetes-pods
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          # Solo il namespace di Prometheus: basta un Role, non un ClusterRole.
+          own_namespace: true
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        regex: (.+)
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # Come nel compose, `job` è il nome del servizio: le query e la dashboard
+      # non cambiano, e non c'è conflitto con la label `application` che i
+      # servizi esportano da sé.
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        target_label: job
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod

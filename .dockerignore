@@ -1,0 +1,26 @@
+# Context del Dockerfile dei servizi: solo ciò che serve a Maven per costruire
+# un modulo. `target/` è il punto importante: in locale contiene jar di versioni
+# vecchie, che il glob dello stage di build raccoglierebbe al posto di quello appena
+# costruito.
+**/target
+**/logs
+.git
+.github
+.idea
+**/*.iml
+docs
+docker
+k8s
+scripts
+*.md
+
+# Mai nel context: credenziali e file d'ambiente locali.
+.env
+.env.*
+!.env.example
+**/*.pem
+**/*.key
+**/*.p12
+**/*.jks
+**/firebase-*.json
+**/*service-account*.json

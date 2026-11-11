@@ -1,0 +1,107 @@
+# postgres-events — database di events, come il servizio postgres-events del docker-compose.yml.
+# La password arriva dal Secret postgres-events (chiave `password`), che fornisce l'overlay.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-events
+  labels:
+    app.kubernetes.io/name: postgres-events
+    app.kubernetes.io/component: database
+spec:
+  serviceName: postgres-events
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-events
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-events
+        app.kubernetes.io/component: database
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        # Utente `postgres` dell'immagine Alpine. fsGroup rende il volume
+        # scrivibile senza un initContainer root che faccia chown.
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          env:
+            - name: POSTGRES_DB
+              value: events
+            - name: POSTGRES_USER
+              value: events
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-events
+                  key: password
+            # Sottocartella del volume: la radice di un PersistentVolume può
+            # contenere lost+found, e initdb rifiuta una directory non vuota.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "events", "-d", "events"]
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "events", "-d", "events"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            # Socket Unix e file temporanei: fuori dal filesystem in sola lettura.
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-events
+  labels:
+    app.kubernetes.io/name: postgres-events
+spec:
+  selector:
+    app.kubernetes.io/name: postgres-events
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
