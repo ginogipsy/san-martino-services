@@ -24,7 +24,13 @@ NODE="$CLUSTER-control-plane"
 NS=sanmartino
 OVERLAY="$REPO/k8s/overlays/local"
 SECRETS_DIR="$OVERLAY/secrets"
-PANEL_DIR="${PANEL_DIR:-$REPO/../san-martino-user-panel}"
+if [ -z "${PANEL_DIR:-}" ]; then
+    if [ -d "$REPO/../san-martino-user-panel-032" ]; then
+        PANEL_DIR="$REPO/../san-martino-user-panel-032"
+    else
+        PANEL_DIR="$REPO/../san-martino-user-panel"
+    fi
+fi
 KIND="${KIND:-kind}"
 TAG=dev
 BACKEND_IMAGE=ghcr.io/ginogipsy/sanmartino
