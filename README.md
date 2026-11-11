@@ -78,9 +78,9 @@ docker compose up -d prometheus loki promtail grafana
 | [docs/observability.md](docs/observability.md) | aspect AOP di logging, correlation id, stack Prometheus/Loki/Grafana |
 | [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | regole di codice, ID Sonar rilevanti, pattern architetturali |
 | [docs/VAULT_INTEGRATION.md](docs/VAULT_INTEGRATION.md) | integrazione Spring Cloud Vault |
-| [docs/CLAUDE.md](docs/CLAUDE.md) | riepilogo di stato e avanzamento del progetto |
+| [docs/kubernetes.md](docs/kubernetes.md) | architettura e guida all'infrastruttura Kubernetes (Kind e Cloud) |
 | [docs/api/](docs/api/) | reference OpenAPI **generato** — non editare a mano |
-| [CLAUDE.md](CLAUDE.md) | istruzioni operative per agenti |
+| [CLAUDE.md](CLAUDE.md) | istruzioni unificate per agenti AI su tutto l'ecosistema San Martino |
 
 ## Contribuire
 
