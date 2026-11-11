@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# Overlay del cluster LOCALE (kind). Tutto San Martino, infrastruttura inclusa:
+#
+#   scripts/k8s-dev-up.sh                   # cluster, immagini, segreti, apply
+#   kubectl apply -k k8s/overlays/local     # solo l'apply, a cluster già pronto
+#
+# L'apply a mano richiede i file in secrets/, che genera lo script (password
+# casuali, mai committate: la cartella è nel .gitignore).
+#
+# Raggiungibilità, con `127.0.0.1 sanmartino.local grafana.sanmartino.local`
+# in /etc/hosts:
+#   http://sanmartino.local            pannello + API (/v1, /api/auth)
+#   http://localhost:8080              la stessa cosa, per l'app Android
+#   http://grafana.sanmartino.local    Grafana
+#
+# La regola dell'Ingress di base NON ha host di proposito: risponde a
+# sanmartino.local, a localhost e all'emulatore Android (Host: 127.0.0.1)
+# allo stesso modo. Una regola con host la escluderebbe.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: sanmartino
+
+resources:
+  - ../../base
+  - grafana-ingress.yaml
+
+components:
+  - ../../components/infra-local
+  - ../../components/keycloak
+  - ../../components/vault-dev
+  # Auth KUBERNETES anche in locale, come in cloud: i servizi non ricevono il
+  # root token, e il percorso di autenticazione provato qui è quello di
+  # produzione. Togliendo questa riga si torna all'auth TOKEN.
+  - ../../components/vault-k8s-auth
+  - ../../components/observability
+
+# Tag `dev`: le immagini le costruisce lo script e le carica nel nodo kind,
+# nessun pull da registry. Un tag diverso da `latest` vale IfNotPresent.
+images:
+  - name: ghcr.io/ginogipsy/sanmartino/gateway
+    newTag: dev
+  - name: ghcr.io/ginogipsy/sanmartino/auth-service
+    newTag: dev
+  - name: ghcr.io/ginogipsy/sanmartino/events-service
+    newTag: dev
+  - name: ghcr.io/ginogipsy/sanmartino/stands-service
+    newTag: dev
+  - name: ghcr.io/ginogipsy/sanmartino/saga-orchestrator
+    newTag: dev
+  - name: ghcr.io/ginogipsy/sanmartino/notifications-service
+    newTag: dev
+  - name: ghcr.io/ginogipsy/san-martino-user-panel
+    newTag: dev
+
+# Un file `chiave=valore` per Secret, generati da scripts/k8s-dev-up.sh.
+secretGenerator:
+  - name: vault-token
+    envs: [secrets/vault-token.env]
+  - name: postgres-events
+    envs: [secrets/postgres-events.env]
+  - name: postgres-stands
+    envs: [secrets/postgres-stands.env]
+  - name: postgres-saga
+    envs: [secrets/postgres-saga.env]
+  - name: postgres-auth
+    envs: [secrets/postgres-auth.env]
+  - name: postgres-keycloak
+    envs: [secrets/postgres-keycloak.env]
+  - name: keycloak-admin
+    envs: [secrets/keycloak-admin.env]
+  - name: grafana-admin
+    envs: [secrets/grafana-admin.env]

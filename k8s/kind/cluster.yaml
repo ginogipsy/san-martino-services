@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# Cluster kind per lo sviluppo locale. Lo crea scripts/k8s-dev-up.sh; a mano:
+#
+#   kind create cluster --config k8s/kind/cluster.yaml
+#
+# Le porte sono legate a 127.0.0.1: il cluster usa credenziali di sviluppo e
+# non deve essere raggiungibile dalla rete locale.
+# ---------------------------------------------------------------------------
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: sanmartino
+nodes:
+  - role: control-plane
+    # Versione di Kubernetes FISSATA, con digest, dalle note di rilascio di
+    # kind v0.33.0: un aggiornamento di kind non cambia il cluster di nascosto.
+    # 1.35 come il kubectl della postazione, dentro la skew policy (±1 minor).
+    image: kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0
+    extraPortMappings:
+      # L'Ingress (Traefik, NodePort 30080) sulla :80 dell'host:
+      # http://sanmartino.local, http://grafana.sanmartino.local
+      - containerPort: 30080
+        hostPort: 80
+        listenAddress: 127.0.0.1
+        protocol: TCP
+      # Lo stesso Ingress anche sulla :8080, la porta che l'app Android in
+      # debug raggiunge (API_BASE_URL=http://127.0.0.1:8080/) attraverso
+      # `adb reverse tcp:8080 tcp:8080`. Dall'emulatore vale anche 10.0.2.2:8080
+      # sulle immagini dove le Local Network Protections non lo bloccano.
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: 127.0.0.1
+        protocol: TCP
