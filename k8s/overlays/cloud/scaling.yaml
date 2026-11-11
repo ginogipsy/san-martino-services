@@ -1,0 +1,31 @@
+# ---------------------------------------------------------------------------
+# Due repliche per i sei servizi e il pannello (target per label in
+# kustomization.yaml), sparse su nodi diversi: un nodo che cade non porta via
+# un servizio intero. Il `name` è un segnaposto, conta il target.
+#
+# `matchLabelKeys` rende il vincolo per-applicazione con un solo patch: conta
+# solo i pod con lo stesso app.kubernetes.io/name (e della stessa revisione,
+# pod-template-hash, così un rollout non si blocca sulle repliche vecchie).
+#
+# ScheduleAnyway, non DoNotSchedule: su un cluster con un nodo solo i pod
+# partono lo stesso, invece di restare Pending.
+# ---------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaling
+spec:
+  replicas: 2
+  template:
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/part-of
+                operator: Exists
+          matchLabelKeys:
+            - app.kubernetes.io/name
+            - pod-template-hash

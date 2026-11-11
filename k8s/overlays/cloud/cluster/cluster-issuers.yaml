@@ -1,0 +1,38 @@
+# Emittenti ACME di Let's Encrypt, con challenge HTTP-01 servita da Traefik.
+#
+# Due emittenti: STAGING per la prima prova (certificati non riconosciuti dai
+# browser, ma limiti di frequenza larghi: un errore di DNS non brucia la quota
+# di produzione) e PROD. Quale usare lo decide CLUSTER_ISSUER in
+# ../kustomization.yaml.
+#
+# DA CAMBIARE: `email`, l'indirizzo a cui Let's Encrypt manda gli avvisi di
+# scadenza e i problemi dell'account.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: ops@example.org
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: ops@example.org
+    privateKeySecretRef:
+      name: letsencrypt-prod-account
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: traefik
