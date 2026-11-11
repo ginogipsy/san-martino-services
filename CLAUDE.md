@@ -30,7 +30,7 @@ Monorepo Maven multi-modulo con approccio **API-First** (OpenAPI Generator) e ar
 
 ### Comandi Backend
 ```bash
-docker compose up -d vault vault-init             # PREREQUISITO OBBLIGATORIO per i test Spring
+docker compose up -d                              # Avvia solo infra locale (Vault, DB, Kafka, Keycloak); le app Java sono su profilo 'apps'
 ./mvnw clean verify                               # Build e test dell'intero reactor
 ./mvnw -pl :<service> -am -DskipTests package     # Compilazione di un singolo modulo
 docker build --build-arg SERVICE=<service> -t ghcr.io/ginogipsy/sanmartino/<service>:dev . # Build immagine OCI

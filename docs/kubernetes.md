@@ -83,6 +83,16 @@ Aggiungi a `/etc/hosts`:
 ./scripts/k8s-dev-down.sh --purge
 ```
 
+### Kind vs Docker Compose: Quando usare cosa
+
+| Scenario | Strumento consigliato | Comando | Note |
+|---|---|---|---|
+| **Sviluppo rapido & Debug** | **Docker Compose** + IntelliJ | `docker compose up -d` | Avvia solo DB, Kafka, Keycloak, Vault e Grafana. Permette di lanciare i microservizi da IntelliJ in modalità Debug con breakpoint e hot-reload istantaneo. |
+| **Test E2E & Validazione K8s** | **Kubernetes (Kind)** | `./scripts/k8s-dev-up.sh` | Compila e avvia tutti i microservizi, Ingress Traefik, user-panel Angular, Alloy e policy K8s. Replica fedelmente l'ambiente di produzione. |
+
+> [!WARNING]
+> **Conflitto porte host:** Poiché sia Kind che Docker Compose espongono porte comuni (`8080`, `8200`, `9080`), **non eseguirli contemporaneamente**. Per passare da Kind a Compose: `./scripts/k8s-dev-down.sh && docker compose up -d`. Per tornare a Kind: `docker compose down && ./scripts/k8s-dev-up.sh`.
+
 ---
 
 ## 3. Connettività App Android & Client
