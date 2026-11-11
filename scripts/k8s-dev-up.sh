@@ -193,13 +193,17 @@ done
 log "Verifica dall'host"
 FAILED=0
 check() { # descrizione atteso url [opzioni di curl]
-    local what=$1 want=$2 url=$3 code; shift 3
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" "$url" || true)"
-    if [ "$code" = "$want" ]; then
-        info "OK   $what → $code"
-    else
-        info "FAIL $what → $code (atteso $want)"; FAILED=1
-    fi
+    local what=$1 want=$2 url=$3 code retries=5 delay=2; shift 3
+    while [ "$retries" -gt 0 ]; do
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$@" "$url" || true)"
+        if [ "$code" = "$want" ]; then
+            info "OK   $what → $code"
+            return 0
+        fi
+        retries=$((retries - 1))
+        [ "$retries" -gt 0 ] && sleep "$delay"
+    done
+    info "FAIL $what → $code (atteso $want)"; FAILED=1
 }
 check "API dalla :8080 (Android)      GET /v1/events" 200 http://127.0.0.1:8080/v1/events
 check "pannello da sanmartino.local   GET /"          200 http://127.0.0.1/ -H 'Host: sanmartino.local'
