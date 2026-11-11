@@ -155,3 +155,24 @@ docker compose up -d vault vault-init      # secret KV richiesti dai test
 ./mvnw clean verify                        # build + test completi
 docker build --build-arg SERVICE=events-service -t sanmartino/events-service:dev .
 ```
+
+## Kubernetes & Kustomize
+
+L'infrastruttura di orchestrazione risiede in `k8s/` ed è validata in CI tramite render Kustomize:
+
+```bash
+# Validazione statica dei manifest locali e cloud
+kubectl kustomize k8s/overlays/local > /dev/null
+kubectl kustomize k8s/overlays/cloud > /dev/null
+kubectl kustomize k8s/overlays/cloud/cluster > /dev/null
+```
+
+Per l'avvio e la gestione completa dell'ambiente di sviluppo locale su cluster Kind:
+
+```bash
+./scripts/k8s-dev-up.sh       # crea il cluster, compila le immagini e distribuisce i servizi
+./scripts/k8s-dev-down.sh     # elimina il cluster
+```
+
+Tutti i dettagli architetturali e operativi sono documentati in **[`docs/kubernetes.md`](./kubernetes.md)**.
+

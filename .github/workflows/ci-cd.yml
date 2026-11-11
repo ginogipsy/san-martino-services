@@ -46,6 +46,8 @@ on:
       # Build delle immagini dei servizi
       - 'Dockerfile'
       - '.dockerignore'
+      - 'k8s/**'
+      - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
       # NB: 'docs/**' NON è nella lista — vedi job "docs" (anti-loop)
@@ -69,6 +71,8 @@ on:
       # Build delle immagini dei servizi
       - 'Dockerfile'
       - '.dockerignore'
+      - 'k8s/**'
+      - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
@@ -223,11 +227,35 @@ jobs:
         run: rm -rf ~/.m2/repository/com/ginogipsy
 
   # =========================================================================
-  # 2. IMMAGINI OCI — un job per servizio, in parallelo (Dockerfile)
+  # 2. VALIDATE-K8S — render Kustomize e validazione statica dei manifest
+  # =========================================================================
+  validate-k8s:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Validate local overlay render
+        run: kubectl kustomize k8s/overlays/local > /dev/null
+
+      - name: Validate cloud overlay render
+        run: kubectl kustomize k8s/overlays/cloud > /dev/null
+
+      - name: Validate cloud cluster issuers render
+        run: kubectl kustomize k8s/overlays/cloud/cluster > /dev/null
+
+  # =========================================================================
+  # 3. IMMAGINI OCI — un job per servizio, in parallelo (Dockerfile)
   # =========================================================================
   build-images:
     name: Image · ${{ matrix.service }}
-    needs: build-test
+    needs: [build-test, validate-k8s]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

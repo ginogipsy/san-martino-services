@@ -414,6 +414,14 @@ Il filtro `uri!~"/actuator.*"` toglie probe e scrape, che passano anche loro da
 circa 0,37 richieste al secondo per servizio anche a sistema fermo, e coprirebbero
 il traffico vero. I pannelli HTTP della dashboard usano lo stesso filtro.
 
+### Stack di Osservabilità in Kubernetes (`k8s/components/observability`)
+
+Nel cluster Kubernetes lo stack è distribuito tramite il componente Kustomize dedicato:
+
+- **Prometheus (v3.2):** Sostituisce il target statico `host.docker.internal` con il discovery automatico dei pod annotati (`prometheus.io/scrape: "true"`) attraverso `kubernetes_sd_configs`, circoscritto tramite RBAC al solo namespace `sanmartino`.
+- **Grafana Alloy (v1.21):** Raccoglie i log applicativi direttamente dall'API di Kubernetes (`loki.source.kubernetes`) e li inoltra a Loki. Gira come `Deployment` a replica singola anziché `DaemonSet`, garantendo la piena compatibilità con il profilo Pod Security Admission `restricted` (che proibisce volumi `hostPath`).
+- **Loki (3.4) & Grafana (11.6):** Riusano direttamente i file di configurazione e le dashboard JSON definiti in `docker/grafana/` grazie al componente Kustomize annidato `docker/kustomization.yaml`, garantendo una singola fonte di verità sia per Docker Compose che per Kubernetes.
+
 ---
 
 ## 7. Cosa è stato verificato, e cosa no
