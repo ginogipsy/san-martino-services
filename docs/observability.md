@@ -161,12 +161,14 @@ l'aspect smette di scrivere ingressi e uscite (li produce solo se DEBUG è attiv
   le route.
 
 Per le chiamate HTTP in uscita c'è `CorrelationIdPropagationInterceptor`, che la libreria
-espone come bean. Va agganciato al `RestClient.Builder` auto-configurato da Spring Boot
-(`SagaConfig`), così che i `RestClientCustomizer` di Micrometer Tracing (`ObservationRestClientCustomizer`)
-restino attivi insieme all'interceptor del correlation id:
+espone come bean. Va agganciato al `RestClient.Builder` insieme all'`ObservationRegistry`
+di Micrometer (`SagaConfig`), così che oltre a `X-Correlation-Id` venga propagato anche
+l'header W3C `traceparent`:
 
 ```java
-builder.clone().baseUrl(baseUrl).requestInterceptor(correlationId).build();
+RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl).requestInterceptor(correlationId);
+observationRegistry.ifAvailable(builder::observationRegistry);
+return builder.build();
 ```
 
 ### Tracing distribuito (W3C `traceparent` + Grafana Tempo)
