@@ -120,16 +120,23 @@ La configurazione Kubernetes risiede in `san-martino-services/k8s/` ed è strutt
 
 Tutti i repository condividono la stessa impostazione metodologica:
 
-* **Modello di Branching:** `git flow`.
+* **Modello di Branching & Naming:** `git flow`.
   * `develop`: branch di sviluppo e integrazione.
   * `master`: branch di produzione (**non** `main`).
-  * `feature/*` -> PR verso `develop`.
+  * **Naming dei Branch (OBBLIGATORIO):** Ogni branch deve includere il numero della issue a tre cifre:
+    * `feature/<NNN>-<descrizione-kebab-case>` (es. `feature/043-audit-log-business`)
+    * `bugfix/<NNN>-<descrizione-kebab-case>` (es. `bugfix/044-fix-token-expiration`)
+    * `release/<versione>` o `hotfix/<versione>`
+  * `feature/*` e `bugfix/*` -> PR verso `develop`.
   * `release/*` e `hotfix/*` -> PR verso `master` con back-merge su `develop`.
-* **Convenzione Commit:**
+* **Convenzione Commit (OBBLIGATORIA):**
+  Ogni commit deve SEMPRE iniziare con il prefisso `(#NNN)` corrispondente al numero della issue/task:
   ```
   (#NNN) descrizione all'infinito inglese
   ```
-  *Esempio:* `(#032) added the cloud overlay for production Kubernetes`
+  *Esempi:*
+  * `(#043) implement business audit logging library and aspect in common-observability`
+  * `(#032) add the cloud overlay for production Kubernetes`
   Un commit = un singolo cambiamento logico.
 * **Release & Smart Versioning:** Al merge su `master`, il workflow `release.yml` calcola la versione semantica (da nome branch o label PR `major`/`minor`), tagga la release e aggiorna `develop`.
 * **Deploy Artefatti:**

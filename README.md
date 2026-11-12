@@ -107,8 +107,8 @@ docker build --build-arg SERVICE=events-service -t sanmartino/events-service:dev
 
 ## Contribuire
 
-Branching **git flow**: `feature/*` → PR verso `develop`; `release/*` e `hotfix/*` → `master`.
-Commit: `(#NNN) descrizione all'infinito inglese`. Dettagli in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
+- **Branching git flow:** `feature/<NNN>-<nome>` o `bugfix/<NNN>-<nome>` → PR verso `develop`; `release/*` e `hotfix/*` → `master`.
+- **Commit:** prefisso obbligatorio con numero issue `(#NNN) descrizione all'infinito inglese`. Dettagli completi in [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
 ## 🛡️ Sicurezza e Portfolio
 
