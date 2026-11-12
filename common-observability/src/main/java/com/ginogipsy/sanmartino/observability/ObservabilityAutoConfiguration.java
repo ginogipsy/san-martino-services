@@ -12,6 +12,7 @@ import io.micrometer.tracing.Tracer;
 import jakarta.servlet.Filter;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -46,7 +47,11 @@ import java.util.stream.Collectors;
  * le interfacce generate da openapi-generator e un proxy JDK perderebbe le
  * annotazioni MVC della classe).
  */
-@AutoConfiguration
+@AutoConfiguration(afterName = {
+        "org.springframework.boot.micrometer.tracing.opentelemetry.autoconfigure.OpenTelemetryTracingAutoConfiguration",
+        "org.springframework.boot.micrometer.tracing.autoconfigure.MicrometerTracingAutoConfiguration",
+        "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"
+})
 @EnableConfigurationProperties(ObservabilityProperties.class)
 @ConditionalOnProperty(prefix = "sanmartino.observability", name = "enabled", matchIfMissing = true)
 public class ObservabilityAutoConfiguration {
@@ -83,13 +88,12 @@ public class ObservabilityAutoConfiguration {
     @Bean
     @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
     @ConditionalOnClass(Tracer.class)
-    @ConditionalOnBean(Tracer.class)
     @ConditionalOnMissingBean(name = "traceIdResponseFilterRegistration")
     @ConditionalOnProperty(prefix = "sanmartino.observability.tracing", name = "enabled", matchIfMissing = true)
     public FilterRegistrationBean<Filter> traceIdResponseFilterRegistration(
-            Tracer tracer, ObservabilityProperties properties) {
+            ObjectProvider<Tracer> tracerProvider, ObservabilityProperties properties) {
         FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>(
-                new TraceIdResponseFilter(tracer, properties.tracing().responseHeaderName()));
+                new TraceIdResponseFilter(tracerProvider::getIfAvailable, properties.tracing().responseHeaderName()));
         // Gira dopo ServerHttpObservationFilter (che ha Ordered.HIGHEST_PRECEDENCE + 1)
         // così lo span HTTP è già aperto e contiene il traceId della richiesta.
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
