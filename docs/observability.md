@@ -2,29 +2,29 @@
 
 Due pezzi, pensati per funzionare insieme:
 
-1. **`common-observability`** — libreria condivisa dai servizi: aspect AOP per il logging di esecuzione, correlation id in MDC, log strutturati in JSON (ECS), e aspect `@Auditable` per gli eventi di audit di business.
-2. **Stack Grafana** nel `docker-compose.yml` — Prometheus (metriche), Loki (log operativi),
-   Promtail (spedizione), Grafana (UI con data source e dashboard pre-configurate).
+1. **`common-observability`** — libreria condivisa dai servizi: aspect AOP per il logging di esecuzione, correlation id in MDC, tracing distribuito (Micrometer Tracing + OpenTelemetry OTLP + JDBC proxy), log strutturati in JSON (ECS), e aspect `@Auditable` per gli eventi di audit di business.
+2. **Stack Grafana** nel `docker-compose.yml` e in `k8s/components/observability` — Prometheus (metriche), Loki (log operativi), Promtail/Alloy (spedizione), Tempo (tracing distribuito OTLP), Grafana (UI con data source, correlazioni Log↔Trace e dashboard pre-configurate).
 
 > [!NOTE]
-> Questa guida copre l'**osservabilità tecnica e operativa** (log, metriche Micrometer, tracing).
+> Questa guida copre l'**osservabilità tecnica e operativa** (log, metriche Micrometer, tracing distribuito).
 > Per il tracciamento e la persistenza degli **eventi di dominio e audit di business** (utente, azione, risorsa, Kafka, PostgreSQL), consulta la guida dedicata: [docs/audit-logging.md](audit-logging.md).
 
 ```
-                 ┌──────────────────────────────────────────┐
-   richiesta ──► │ CorrelationIdFilter   → MDC + header      │
-                 │ MethodLoggingAspect   → >> << !! + MDC    │  servizio Spring Boot
-                 │ Actuator + Micrometer → /actuator/prometheus
-                 └───────┬───────────────────────┬──────────┘
-                         │ logs/<service>.log    │ scrape ogni 15s
-                         │ (JSON, formato ECS)   │
-                    ┌────▼─────┐            ┌────▼───────┐
-                    │ Promtail │──push────► │            │
-                    └────┬─────┘            │ Prometheus │
-                         │                  └────┬───────┘
-                    ┌────▼─────┐                 │
-                    │   Loki   │◄────────────────┼──── Grafana :3000
-                    └──────────┘                 │      (Loki + Prometheus)
+                 ┌──────────────────────────────────────────────────────┐
+   richiesta ──► │ CorrelationIdFilter   → MDC + header X-Correlation-Id│
+                 │ Micrometer Tracing    → W3C traceparent + X-Trace-Id │  servizio Spring Boot
+                 │ MethodLoggingAspect   → >> << !! + MDC               │
+                 │ Actuator + Micrometer → /actuator/prometheus         │
+                 └───────┬───────────────────────┬───────────────┬──────┘
+                         │ logs/<service>.log    │ scrape 15s    │ OTLP HTTP :4318
+                         │ (JSON, formato ECS)   │               │ (/v1/traces)
+                    ┌────▼─────┐            ┌────▼───────┐  ┌────▼─────┐
+                    │ Promtail │──push────► │            │  │  Tempo   │
+                    └────┬─────┘            │ Prometheus │  └────┬─────┘
+                         │                  └────┬───────┘       │
+                    ┌────▼─────┐                 │               │
+                    │   Loki   │◄────────────────┼───────────────┼──── Grafana :3000
+                    └──────────┘                 │               │   (Loki ↔ Tempo + Prometheus)
 ```
 
 ---
@@ -136,6 +136,8 @@ ciò che gli serve.
 | `correlation.enabled` | `true` | filtro servlet del correlation id |
 | `correlation.header-name` | `X-Correlation-Id` | header letto e riemesso |
 | `correlation.mdc-key` | `correlationId` | chiave MDC, e quindi campo JSON |
+| `tracing.enabled` | `true` | osservazione automatica Kafka (`KafkaTemplate` + `@KafkaListener`) e filtro risposta |
+| `tracing.response-header-name` | `X-Trace-Id` | header HTTP in cui riemettere il `traceId` attivo |
 
 In produzione conviene alzare il livello: con `logging.level.com.ginogipsy.sanmartino=INFO`
 l'aspect smette di scrivere ingressi e uscite (li produce solo se DEBUG è attivo) ma
@@ -143,7 +145,9 @@ l'aspect smette di scrivere ingressi e uscite (li produce solo se DEBUG è attiv
 
 ---
 
-## 2. Correlation id e MDC
+## 2. Correlation id, Tracing distribuito (OpenTelemetry) e MDC
+
+### Correlation id (`X-Correlation-Id`)
 
 `CorrelationIdFilter` è il primo filtro della catena (`Ordered.HIGHEST_PRECEDENCE`) e:
 
@@ -157,24 +161,47 @@ l'aspect smette di scrivere ingressi e uscite (li produce solo se DEBUG è attiv
   le route.
 
 Per le chiamate HTTP in uscita c'è `CorrelationIdPropagationInterceptor`, che la libreria
-espone come bean. Va agganciato al `RestClient` — `saga-orchestrator` lo fa in `SagaConfig`,
-perché quei client non partono dal `RestClient.Builder` auto-configurato e i
-`RestClientCustomizer` non li toccherebbero:
+espone come bean. Va agganciato al `RestClient.Builder` auto-configurato da Spring Boot
+(`SagaConfig`), così che i `RestClientCustomizer` di Micrometer Tracing (`ObservationRestClientCustomizer`)
+restino attivi insieme all'interceptor del correlation id:
 
 ```java
-RestClient.builder().baseUrl(baseUrl).requestInterceptor(correlationId).build();
+builder.clone().baseUrl(baseUrl).requestInterceptor(correlationId).build();
 ```
 
-Le chiavi MDC diventano campi di primo livello nel log JSON: `correlationId`, `httpMethod`,
-`httpPath` (per richiesta) e `operation`, `durationMs`, `outcome` (sulle righe di uscita
+### Tracing distribuito (W3C `traceparent` + Grafana Tempo)
+
+Oltre al correlation id applicativo, `common-observability` porta il **tracing distribuito**
+basato su **Micrometer Tracing**, bridge **OpenTelemetry** (`micrometer-tracing-bridge-otel`)
+ed esportatore **OTLP HTTP** (`opentelemetry-exporter-otlp`):
+
+1. **HTTP in ingresso e uscita:** ogni richiesta genera uno span server (`ServerHttpObservationFilter`),
+   propaga automaticamente l'header standard W3C `traceparent` sulle chiamate `RestClient` e
+   Gateway MVC, e riemette il `traceId` nell'header di risposta `X-Trace-Id` tramite `TraceIdResponseFilter`.
+2. **Kafka (Producer & Consumer):** `KafkaTracingConfiguration` (in `ObservabilityAutoConfiguration`)
+   attiva `observationEnabled = true` su tutti i `KafkaTemplate` e le `ConcurrentKafkaListenerContainerFactory`.
+   Quando un servizio pubblica un messaggio (es. `saga-orchestrator` o `KafkaAuditPublisher`),
+   Micrometer inietta `traceparent` negli header del record Kafka e il consumer (`notifications-service`,
+   `audit-service`) apre uno span figlio collegato alla stessa traccia.
+3. **Database JDBC / JPA:** `datasource-micrometer-spring-boot` (`2.2.0`) avvolge il `DataSource`
+   con un proxy osservabile, generando uno span figlio per ogni query SQL eseguita su PostgreSQL
+   e per l'acquisizione delle connessioni HikariCP.
+4. **Correlazione automatica Log ↔ Trace:** Micrometer Tracing inietta automaticamente `traceId`
+   e `spanId` nell'MDC di SLF4J. Nei log JSON (ECS) finiscono come campi di primo livello;
+   in Grafana la data source **Loki** ha un `derivedField` su `traceId` che apre direttamente
+   il waterfall in **Tempo**, mentre **Tempo** usa `tracesToLogsV2` per mostrare i log del
+   servizio associati a qualunque span.
+
+Le chiavi MDC diventano campi di primo livello nel log JSON: `traceId`, `spanId`, `correlationId`,
+`httpMethod`, `httpPath` (per richiesta) e `operation`, `durationMs`, `outcome` (sulle righe di uscita
 dell'aspect). Sono filtrabili in Loki senza regex.
 
 ### Attraverso Kafka
 
-Un evento saga non apre più una catena nuova: l'id viaggia come header del record,
-`X-Correlation-Id`, con due meccanismi diversi ai due estremi.
+Un evento saga non apre più una catena nuova: viaggiano negli header del record sia `X-Correlation-Id`
+sia l'header W3C `traceparent` di OpenTelemetry.
 
-In **produzione** l'interceptor è `KafkaCorrelationInterceptor`, un `ProducerInterceptor` di
+In **produzione** l'interceptor del correlation id è `KafkaCorrelationInterceptor`, un `ProducerInterceptor` di
 Apache Kafka: non è un bean, è Kafka a istanziarlo per nome da `interceptor.classes`. Ce lo
 mette `ObservabilityAutoConfiguration` con un `DefaultKafkaProducerFactoryCustomizer`, che
 aggiunge alla config map del producer il nome della classe — in merge con gli interceptor
@@ -187,7 +214,9 @@ esposto come bean e agganciato da Boot alla listener container factory. Attenzio
 servizio che dichiara una propria factory deve chiamare `setRecordInterceptor` a mano**,
 perché con un bean di nome `kafkaListenerContainerFactory` l'auto-configurazione di Boot
 arretra e con lei l'aggancio. `notifications-service` è in questo caso — la factory custom
-gli serve per i deserializer — e lo fa esplicitamente in `KafkaConsumerConfig`.
+gli serve per i deserializer — e lo fa esplicitamente in `KafkaConsumerConfig`. L'osservazione
+Micrometer (`setObservationEnabled(true)`) viene invece applicata automaticamente a qualunque
+factory dal `BeanPostProcessor` di `KafkaTracingConfiguration`.
 
 Il callback di `KafkaTemplate.send` gira sul thread I/O del producer, che non ha l'MDC della
 richiesta: `SagaEventPublisher` cattura la mappa MDC prima della `send` e la ripristina
@@ -203,7 +232,7 @@ Boot (nessuna dipendenza aggiuntiva, nessun `logback-spring.xml`). Riga reale pr
 `events-service`:
 
 ```json
-{"@timestamp":"2026-07-31T14:26:56.109036400Z","log":{"level":"DEBUG","logger":"com.ginogipsy.sanmartino.events.service.EventService"},"process":{"pid":2684,"thread":{"name":"http-nio-8081-exec-3"}},"service":{"name":"events-service","version":"0.0.1","environment":"local"},"message":"<< EventService.findAll completed in 148 ms -> [EventEntity(id=11111111-…-000000002026), …]","httpPath":"/v1/events","correlationId":"demo-123","httpMethod":"GET","operation":"EventService.findAll","durationMs":"148","outcome":"success","ecs":{"version":"8.11"}}
+{"@timestamp":"2026-07-31T14:26:56.109036400Z","log":{"level":"DEBUG","logger":"com.ginogipsy.sanmartino.events.service.EventService"},"process":{"pid":2684,"thread":{"name":"http-nio-8081-exec-3"}},"service":{"name":"events-service","version":"0.0.1","environment":"local"},"message":"<< EventService.findAll completed in 148 ms -> [EventEntity(id=11111111-…-000000002026), …]","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","httpPath":"/v1/events","correlationId":"demo-123","httpMethod":"GET","operation":"EventService.findAll","durationMs":"148","outcome":"success","ecs":{"version":"8.11"}}
 ```
 
 Dove finisce:
@@ -211,31 +240,39 @@ Dove finisce:
 | Destinazione | Formato | Property |
 |---|---|---|
 | file `logs/<service>.log` | JSON (ECS) — è la sorgente di Promtail | `logging.file.name`, `logging.structured.format.file` |
-| console | testo leggibile, con il correlation id nel prefisso | `logging.pattern.level` |
+| console | testo leggibile, con `traceId`, `spanId` e `correlationId` nel prefisso | `logging.pattern.level` |
 | console, in container | JSON se `LOG_CONSOLE_FORMAT=ecs` | `logging.structured.format.console` |
 
 Il file rotola da solo (10 MB, 7 giorni di storico: default di Spring Boot). `LOG_DIR`
 (default `./logs`) è **relativo alla working directory del processo**, che con IntelliJ è la
 cartella del modulo: per questo Promtail cerca i log sia in `logs/` sia in `<modulo>/logs/`.
 
-Sulla console il correlation id compare nel livello, come fa Spring Boot con il traceId:
+Sulla console `traceId`, `spanId` e `correlationId` compaiono nel livello:
 
 ```
-2026-07-31T16:26:55.939+02:00 DEBUG [events-service,demo-123] 2684 --- [nio-8081-exec-3] c.g.s.events.api.EventsController : >> EventsController.listEvents(status=null)
+2026-07-31T16:26:55.939+02:00 DEBUG [events-service,4bf92f3577b34da6a3ce929d0e0e4736,00f067aa0ba902b7,demo-123] 2684 --- [nio-8081-exec-3] c.g.s.events.api.EventsController : >> EventsController.listEvents(status=null)
 ```
 
 ---
 
-## 4. Metriche
+## 4. Metriche & Tracing OTLP
 
 `spring-boot-starter-actuator` **non** basta: l'endpoint `/actuator/prometheus` esiste solo
 se c'è il registry, quindi ogni servizio dichiara anche
 `io.micrometer:micrometer-registry-prometheus` (scope `runtime`).
 
-Nei sei `application.yaml`:
+Nei sette `application.yaml`:
 
 ```yaml
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   metrics:
     tags:
       application: ${spring.application.name}   # label comune a tutte le metriche
@@ -257,9 +294,10 @@ management:
 | Prometheus | `prom/prometheus:v3.2.1` | 9090 | `docker/prometheus/prometheus.yml` |
 | Loki | `grafana/loki:3.4.2` | 3100 | `docker/loki/loki-config.yml` |
 | Promtail | `grafana/promtail:3.4.2` | — | `docker/promtail/promtail-config.yml` |
+| Tempo | `grafana/tempo:2.7.1` | 3200 (HTTP), 4317 (OTLP gRPC), 4318 (OTLP HTTP) | `docker/tempo/tempo-config.yml` |
 | Grafana | `grafana/grafana:11.6.0` | 3000 | `docker/grafana/provisioning/**` |
 
-Quattro decisioni che vale la pena conoscere:
+Cinque decisioni che vale la pena conoscere:
 
 - **Prometheus punta a `host.docker.internal`.** I servizi girano di norma sull'host
   (IntelliJ): lo dicono i secret di Vault, che contengono `localhost:5433`. Su Linux
@@ -272,18 +310,20 @@ Quattro decisioni che vale la pena conoscere:
   lo stdout dei container Compose via socket Docker. La seconda serve a Kafka, Postgres,
   Keycloak — e ai servizi, se li avvii in container (`LOG_CONSOLE_FORMAT=ecs` è già nel
   compose).
-- **Come label solo `level` e `service`.** `correlationId`, `operation` e `durationMs`
+- **Tempo riceve gli span OTLP su `4318` (HTTP) e `4317` (gRPC).** Quando i servizi girano
+  sull'host spediscono su `http://localhost:4318/v1/traces` (default in `application.yaml`);
+  quando girano in container o in Kubernetes la variabile `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`
+  li redirige a `http://tempo:4318/v1/traces`.
+- **Come label Loki solo `level` e `service`.** `traceId`, `spanId`, `correlationId`, `operation` e `durationMs`
   restano campi della riga JSON: come label farebbero esplodere la cardinalità di Loki (una
-  serie temporale per richiesta). Si filtrano con `| json | correlationId="…"`.
+  serie temporale per richiesta). Si filtrano con `| json | traceId="…"`.
 
 Le credenziali di Grafana si sovrascrivono da `.env` (`GRAFANA_ADMIN_USER`,
 `GRAFANA_ADMIN_PASSWORD`); il default `admin`/`admin` è solo per il dev locale.
 
 > **Promtail è End-Of-Life dal 2 marzo 2026** (Grafana Labs): nessun aggiornamento, nemmeno
-> di sicurezza. Funziona, ed è quello che questo task ha implementato, ma il successore è
-> **Grafana Alloy**. La conversione è un comando:
-> `alloy convert --source-format=promtail --output=config.alloy promtail-config.yml`.
-> Da valutare come task a sé, insieme a Tempo (Alloy raccoglie log, metriche e trace).
+> di sicurezza. Funziona in Docker Compose, mentre nel cluster Kubernetes è già stato
+> sostituito da **Grafana Alloy** (`k8s/components/observability/alloy.yaml`).
 
 ---
 
@@ -292,13 +332,14 @@ Le credenziali di Grafana si sovrascrivono da `.env` (`GRAFANA_ADMIN_USER`,
 ### Solo lo stack
 
 ```bash
-docker compose up -d prometheus loki promtail grafana
+docker compose up -d prometheus loki promtail tempo grafana
 ```
 
 | Verifica | Comando | Atteso |
 |---|---|---|
 | Prometheus | `curl http://localhost:9090/-/ready` | `Prometheus Server is Ready.` |
 | Loki | `curl http://localhost:3100/ready` | `ready` (i primi ~15s risponde `Ingester not ready`) |
+| Tempo | `curl http://localhost:3200/ready` | `ready` |
 | Grafana | `curl http://localhost:3000/api/health` | `"database": "ok"` |
 | Promtail | `docker compose logs promtail` | nessun `level=error` |
 
@@ -417,13 +458,20 @@ Il filtro `uri!~"/actuator.*"` toglie probe e scrape, che passano anche loro da
 circa 0,37 richieste al secondo per servizio anche a sistema fermo, e coprirebbero
 il traffico vero. I pannelli HTTP della dashboard usano lo stesso filtro.
 
+**Explore → Tempo** per le tracce distribuite:
+
+- Cerca per **Trace ID** (letto dall'header di risposta `X-Trace-Id` o da una riga di log) oppure usa il tab **Search** filtrando per `Service Name` (`gateway`, `saga-orchestrator`, `events-service`, `stands-service`, `notifications-service`, `audit-service`, `auth-service`).
+- Da qualsiasi riga di log in **Explore → Loki**, espandi i dettagli del JSON e clicca il pulsante **"View Trace in Tempo"** accanto al campo `TraceID`.
+- Da qualsiasi span nel waterfall di **Tempo**, clicca l'icona dei log per interrogare automaticamente **Loki** con `{service="<service.name>"} | json | traceId="<traceId>"`.
+
 ### Stack di Osservabilità in Kubernetes (`k8s/components/observability`)
 
 Nel cluster Kubernetes lo stack è distribuito tramite il componente Kustomize dedicato:
 
 - **Prometheus (v3.2):** Sostituisce il target statico `host.docker.internal` con il discovery automatico dei pod annotati (`prometheus.io/scrape: "true"`) attraverso `kubernetes_sd_configs`, circoscritto tramite RBAC al solo namespace `sanmartino`.
 - **Grafana Alloy (v1.21):** Raccoglie i log applicativi direttamente dall'API di Kubernetes (`loki.source.kubernetes`) e li inoltra a Loki. Gira come `Deployment` a replica singola anziché `DaemonSet`, garantendo la piena compatibilità con il profilo Pod Security Admission `restricted` (che proibisce volumi `hostPath`).
-- **Loki (3.4) & Grafana (11.6):** Riusano direttamente i file di configurazione e le dashboard JSON definiti in `docker/grafana/` grazie al componente Kustomize annidato `docker/kustomization.yaml`, garantendo una singola fonte di verità sia per Docker Compose che per Kubernetes.
+- **Grafana Tempo (2.7.1):** Gira come `StatefulSet` (`tempo.yaml`) con storage persistente in `/var/tempo` e riceve gli span OTLP su `tempo:4318` (configurato per tutti i servizi nella ConfigMap `sanmartino-runtime` di `k8s/base`).
+- **Loki (3.4) & Grafana (11.6):** Riusano direttamente i file di configurazione (`loki-config.yml`, `tempo-config.yml`, `datasources.yml` con correlazione Log↔Trace) e le dashboard JSON definiti in `docker/` grazie al componente Kustomize annidato `docker/kustomization.yaml`, garantendo una singola fonte di verità sia per Docker Compose che per Kubernetes.
 
 ---
 

@@ -23,7 +23,8 @@ public record ObservabilityProperties(
         @DefaultValue("true") boolean enabled,
         @DefaultValue Logging logging,
         @DefaultValue Correlation correlation,
-        @DefaultValue Audit audit
+        @DefaultValue Audit audit,
+        @DefaultValue Tracing tracing
 ) {
 
     /**
@@ -70,6 +71,16 @@ public record ObservabilityProperties(
     public record Audit(
             @DefaultValue("true") boolean enabled,
             @DefaultValue("sanmartino.audit.events") String topic
+    ) {
+    }
+
+    /**
+     * @param enabled            attiva o disattiva l'osservazione automatica (es. su KafkaTemplate e @KafkaListener)
+     * @param responseHeaderName header HTTP in cui riemettere il traceId corrente (vuoto per disabilitare)
+     */
+    public record Tracing(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("X-Trace-Id") String responseHeaderName
     ) {
     }
 }

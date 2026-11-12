@@ -52,6 +52,8 @@ configMapGenerator:
       - SPRING_CLOUD_VAULT_HOST=vault
       - SPRING_CLOUD_VAULT_PORT=8200
       - SPRING_CLOUD_VAULT_SCHEME=http
+      # Endpoint OTLP di Grafana Tempo nel cluster per il tracing distribuito.
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://tempo:4318/v1/traces
   # Topologia interna: come i servizi si trovano fra loro nel cluster. Non è un
   # segreto e non cambia fra ambienti, quindi sta qui e non in Vault. Le
   # variabili d'ambiente hanno precedenza sulle property importate da Vault

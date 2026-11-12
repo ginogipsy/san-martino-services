@@ -20,24 +20,27 @@ public class SagaConfig {
     }
 
     /**
-     * L'interceptor del correlation id (bean di common-observability) va aggiunto a mano:
-     * questi client non partono dal {@code RestClient.Builder} auto-configurato, quindi
-     * i {@code RestClientCustomizer} non li toccherebbero. Senza di lui la saga
-     * risulterebbe scollegata dalle chiamate a events-service e stands-service in Loki.
+     * Parte dal {@code RestClient.Builder} auto-configurato da Spring Boot (clonato per
+     * isolare baseUrl e interceptor fra i due client): in questo modo {@code ObservationRestClientCustomizer}
+     * di Micrometer Tracing resta agganciato e propaga automaticamente l'header W3C
+     * {@code traceparent} verso events-service e stands-service, mentre {@link CorrelationIdPropagationInterceptor}
+     * propaga {@code X-Correlation-Id}.
      */
     @Bean
-    public RestClient eventsRestClient(@Value("${clients.events-base-url:http://localhost:8081}") String baseUrl,
+    public RestClient eventsRestClient(RestClient.Builder builder,
+                                       @Value("${clients.events-base-url:http://localhost:8081}") String baseUrl,
                                        CorrelationIdPropagationInterceptor correlationId) {
-        return RestClient.builder()
+        return builder.clone()
                 .baseUrl(baseUrl)
                 .requestInterceptor(correlationId)
                 .build();
     }
 
     @Bean
-    public RestClient standsRestClient(@Value("${clients.stands-base-url:http://localhost:8082}") String baseUrl,
+    public RestClient standsRestClient(RestClient.Builder builder,
+                                       @Value("${clients.stands-base-url:http://localhost:8082}") String baseUrl,
                                        CorrelationIdPropagationInterceptor correlationId) {
-        return RestClient.builder()
+        return builder.clone()
                 .baseUrl(baseUrl)
                 .requestInterceptor(correlationId)
                 .build();

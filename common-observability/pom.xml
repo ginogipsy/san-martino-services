@@ -101,6 +101,47 @@
             <optional>true</optional>
         </dependency>
 
+        <!--
+          Distributed tracing (Micrometer Tracing + bridge OpenTelemetry + esportatore OTLP).
+          Sono dipendenze transitive non-optional: ogni servizio che importa common-observability
+          ottiene automaticamente la generazione degli span, l'iniezione di traceId/spanId in MDC,
+          la propagazione W3C traceparent (HTTP + Kafka) e l'export OTLP verso Grafana Tempo.
+          Usiamo direttamente i moduli di tracing di Boot 4 invece di spring-boot-starter-opentelemetry
+          per non trascinare micrometer-registry-otlp (le metriche le raccoglie già Prometheus).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-micrometer-tracing-opentelemetry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-opentelemetry</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-bridge-otel</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>aopalliance</groupId>
+                    <artifactId>aopalliance</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!--
+          Osservazione automatica delle query JDBC/JPA tramite proxy DataSource (2.x per Boot 4).
+          Nei servizi senza DataSource (gateway, notifications-service) l'auto-configurazione
+          arretra senza effetti collaterali.
+        -->
+        <dependency>
+            <groupId>net.ttddyy.observation</groupId>
+            <artifactId>datasource-micrometer-spring-boot</artifactId>
+        </dependency>
+
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
