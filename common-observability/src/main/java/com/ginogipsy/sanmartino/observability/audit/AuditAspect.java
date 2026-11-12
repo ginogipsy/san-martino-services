@@ -66,6 +66,13 @@ public class AuditAspect {
                 return;
             }
 
+            String action = effectiveAuditable.action();
+            if (action == null || action.isBlank()) {
+                log.warn("Metodo {}.{} annotato con @Auditable ma 'action' è vuota: audit saltato",
+                        signature.getDeclaringTypeName(), signature.getName());
+                return;
+            }
+
             EvaluationContext context = buildEvaluationContext(joinPoint, signature, result);
 
             String description = evaluateSpel(effectiveAuditable.description(), context);

@@ -29,6 +29,9 @@ public record AuditEvent(
         Instant timestamp,
         Map<String, Object> metadata
 ) {
+    private static final java.util.regex.Pattern ACTION_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Z0-9_]+:[A-Z0-9_]+$");
+
     public AuditEvent {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Audit id cannot be null or blank");
@@ -38,6 +41,10 @@ public record AuditEvent(
         }
         if (action == null || action.isBlank()) {
             throw new IllegalArgumentException("action cannot be null or blank");
+        }
+        if (!ACTION_PATTERN.matcher(action).matches()) {
+            throw new IllegalArgumentException(
+                    "Action format non valido: '" + action + "'. Il formato atteso è <DOMINIO>:<AZIONE> (es. STAND:CREATE, EVENT:UPDATE)");
         }
         if (timestamp == null) {
             timestamp = Instant.now();
