@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: San Martino — Audit Log API
+  description: |
+    API di consultazione e monitoraggio per gli audit log di business di "Le cantine di San Martino".
+    Accessibile esclusivamente agli utenti amministratori con ruolo ROLE_ADMIN.
+  version: 1.0.0
+  contact:
+    name: viviAMOarce
+servers:
+  - url: http://localhost:8086
+    description: Local dev
+  - url: https://api.sanmartino.example.org
+    description: Production
+tags:
+  - name: audit-logs
+    description: Storico e tracciamento delle operazioni di business
+paths:
+  /v1/audit-logs:
+    get:
+      tags:
+        - audit-logs
+      summary: Ricerca e paginazione degli audit log
+      description: Restituisce l'elenco paginato degli audit log in base ai filtri specificati. Richiede ROLE_ADMIN.
+      operationId: getAuditLogs
+      parameters:
+        - name: serviceId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtra per microservizio sorgente (es. stands-service, events-service)
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtra per codice azione (es. STAND:PRICE_UPDATE, EVENT:CREATE)
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtra per identificativo utente / operatore
+        - name: resourceId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filtra per identificativo risorsa impattata (es. standId)
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Data/ora inizio intervallo temporale (ISO-8601 UTC)
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Data/ora fine intervallo temporale (ISO-8601 UTC)
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+          description: Numero di pagina (0-based)
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Elementi per pagina
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            default: timestamp,desc
+          description: Criterio di ordinamento
+      responses:
+        "200":
+          description: Pagina di audit log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogPage"
+        "401":
+          description: Non autenticato
+        "403":
+          description: Accesso negato (richiede ROLE_ADMIN)
+  /v1/audit-logs/{id}:
+    get:
+      tags:
+        - audit-logs
+      summary: Recupera un singolo audit log per ID
+      operationId: getAuditLogById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: ID univoco dell'evento di audit
+      responses:
+        "200":
+          description: Dettaglio dell'audit log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
+        "401":
+          description: Non autenticato
+        "403":
+          description: Accesso negato (richiede ROLE_ADMIN)
+        "404":
+          description: Audit log non trovato
+components:
+  schemas:
+    AuditLog:
+      type: object
+      required:
+        - id
+        - serviceId
+        - action
+        - timestamp
+      properties:
+        id:
+          type: string
+          example: 7b4c6e91-82d1-4ef4-9d5f-9e798e178a9c
+        serviceId:
+          type: string
+          example: stands-service
+        action:
+          type: string
+          example: STAND:PRICE_UPDATE
+        userId:
+          type: string
+          example: u-421
+        username:
+          type: string
+          example: mario.rossi
+        resourceId:
+          type: string
+          example: stand-12
+        description:
+          type: string
+          example: Aggiornato prezzo per stand stand-12 a 4.5
+        correlationId:
+          type: string
+          example: 9a23bd7c-54a8-4221-a47e-8c9e4726e95b
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-11-12T09:30:00Z"
+        metadata:
+          type: object
+          additionalProperties: true
+    AuditLogPage:
+      type: object
+      required:
+        - content
+        - totalElements
+        - totalPages
+        - size
+        - number
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        totalElements:
+          type: integer
+          format: int64
+          example: 120
+        totalPages:
+          type: integer
+          example: 6
+        size:
+          type: integer
+          example: 20
+        number:
+          type: integer
+          example: 0
