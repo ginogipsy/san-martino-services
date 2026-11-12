@@ -77,6 +77,8 @@ images:
     newTag: "1.1.13"
   - name: ghcr.io/ginogipsy/sanmartino/notifications-service
     newTag: "1.1.13"
+  - name: ghcr.io/ginogipsy/sanmartino/audit-service
+    newTag: "1.1.13"
   - name: ghcr.io/ginogipsy/san-martino-user-panel
     newTag: "0.0.2"
 

@@ -30,7 +30,7 @@ AUDIENCE="${VAULT_K8S_AUDIENCE:-vault}"
 K8S_HOST="${VAULT_K8S_HOST:-https://kubernetes.default.svc}"
 
 # Il nome del servizio è anche: path KV, policy, ruolo e ServiceAccount.
-SERVICES="gateway auth-service events-service stands-service saga-orchestrator notifications-service"
+SERVICES="gateway auth-service events-service stands-service saga-orchestrator notifications-service audit-service"
 
 # --- KV v2 su secret/ (in dev mode esiste già) -------------------------------
 if ! vault secrets list -format=json | grep -q '"secret/"'; then

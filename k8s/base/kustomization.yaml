@@ -29,6 +29,7 @@ resources:
   - apps/stands-service.yaml
   - apps/saga-orchestrator.yaml
   - apps/notifications-service.yaml
+  - apps/audit-service.yaml
   - apps/user-panel.yaml
   - ingress.yaml
 
@@ -62,6 +63,7 @@ configMapGenerator:
       - STANDS_URI=http://stands-service:8082
       - SAGA_URI=http://saga-orchestrator:8083
       - AUTH_URI=http://auth-service:8085
+      - AUDIT_URI=http://audit-service:8086
       # saga-orchestrator: clients.events-base-url / clients.stands-base-url
       - CLIENTS_EVENTSBASEURL=http://events-service:8081
       - CLIENTS_STANDSBASEURL=http://stands-service:8082

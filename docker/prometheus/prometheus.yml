@@ -48,6 +48,11 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:8085']
 
+  - job_name: audit-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8086']
+
   # --- Stack di osservabilità stesso ---
   - job_name: prometheus
     static_configs:
@@ -62,7 +67,7 @@ scrape_configs:
       - targets: ['promtail:9080']
 
 # --- Variante con i servizi in container ---------------------------------
-# Sostituisce i sei job sopra quando i servizi girano dentro Compose:
+# Sostituisce i sette job sopra quando i servizi girano dentro Compose:
 #
 #   - job_name: san-martino-containers
 #     metrics_path: /actuator/prometheus
@@ -74,3 +79,4 @@ scrape_configs:
 #           - 'saga-orchestrator:8083'
 #           - 'notifications-service:8084'
 #           - 'auth-service:8085'
+#           - 'audit-service:8086'

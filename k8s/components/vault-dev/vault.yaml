@@ -149,6 +149,11 @@ spec:
                 secretKeyRef:
                   name: postgres-saga
                   key: password
+            - name: AUDIT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-audit
+                  key: password
             # Facoltativo: il client del realm oggi è pubblico (vedi seed-secrets.sh).
             - name: KEYCLOAK_CLIENT_SECRET
               valueFrom:

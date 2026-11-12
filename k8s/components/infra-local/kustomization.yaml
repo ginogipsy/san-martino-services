@@ -17,5 +17,6 @@ resources:
   - postgres/stands.yaml
   - postgres/saga.yaml
   - postgres/auth.yaml
+  - postgres/audit.yaml
   - postgres/keycloak.yaml
   - kafka.yaml

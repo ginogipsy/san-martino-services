@@ -85,6 +85,23 @@ services:
       timeout: 5s
       retries: 10
 
+  postgres-audit:
+    image: postgres:17-alpine
+    container_name: san-martino-postgres-audit
+    environment:
+      POSTGRES_DB: audit
+      POSTGRES_USER: audit
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:-audit}
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres-audit-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U audit -d audit" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # --- NUOVO: Servizio Keycloak basato su PostgreSQL ---
   keycloak:
     image: quay.io/keycloak/keycloak:latest
@@ -196,7 +213,8 @@ services:
         vault kv put secret/gateway \
             EVENTS_URI=http://localhost:8081 \
             STANDS_URI=http://localhost:8082 \
-            SAGA_URI=http://localhost:8083
+            SAGA_URI=http://localhost:8083 \
+            AUDIT_URI=http://localhost:8086
 
         vault kv put secret/notifications-service \
             spring.kafka.bootstrap-servers=localhost:9092 \
@@ -215,6 +233,12 @@ services:
             spring.datasource.username=stands \
             spring.datasource.password=${STANDS_DB_PASSWORD:-stands}
 
+        vault kv put secret/audit-service \
+            spring.datasource.url=jdbc:postgresql://localhost:5438/audit \
+            spring.datasource.username=audit \
+            spring.datasource.password=${AUDIT_DB_PASSWORD:-audit} \
+            spring.kafka.bootstrap-servers=localhost:9092
+
         echo 'Vault population complete.'
     environment:
       VAULT_ADDR: http://vault:8200 # Usa il nome del servizio Docker Compose
@@ -223,6 +247,27 @@ services:
       vault:
         condition: service_healthy # vault-init parte solo quando Vault è healthy
     restart: "no" # Questo servizio deve essere eseguito solo una volta e poi terminare
+
+  audit-service:
+    profiles: ["apps"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SERVICE: audit-service
+    ports:
+      - "8086:8086"
+    environment:
+      # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
+      # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
+      LOG_CONSOLE_FORMAT: ecs
+    depends_on:
+      vault-init:
+        condition: service_completed_successfully
+      postgres-audit:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
 
   auth-service:
     profiles: ["apps"]
@@ -444,6 +489,7 @@ volumes:
   postgres-saga-data:
   postgres-keycloak-data: # Nuovo volume registrato
   postgres-auth-data: # Nuovo volume registrato
+  postgres-audit-data:
   prometheus-data:
   loki-data:
   grafana-data:
