@@ -26,7 +26,8 @@ Monorepo Maven multi-modulo con approccio **API-First** (OpenAPI Generator) e ar
 * `stands-service`: Gestione delle cantine gastronomiche e disponibilità prodotti (PostgreSQL).
 * `saga-orchestrator`: Orchestrazione saghe distribuite per transazioni asincrone su Kafka (PostgreSQL).
 * `notifications-service`: Consumer di eventi da topic Kafka (`sanmartino.saga.events`) con push via Firebase Cloud Messaging (FCM).
-* `common-observability`: Modulo AOP condiviso (aspect di logging, correlation ID in MDC, log JSON ECS, metriche Micrometer).
+* `audit-service`: Tracciamento e audit trail eventi di business via Kafka (`sanmartino.audit.events`), con persistenza PostgreSQL e API protetta `ROLE_ADMIN`.
+* `common-observability`: Modulo AOP condiviso (aspect di logging, correlation ID in MDC, log JSON ECS, metriche Micrometer, aspect `@Auditable` per emissione audit).
 
 ### Comandi Backend
 ```bash

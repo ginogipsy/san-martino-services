@@ -2,10 +2,13 @@
 
 Due pezzi, pensati per funzionare insieme:
 
-1. **`common-observability`** — libreria condivisa dai sei servizi: un aspect AOP che logga
-   le invocazioni dei metodi, un correlation id in MDC, log strutturati in JSON.
-2. **Stack Grafana** nel `docker-compose.yml` — Prometheus (metriche), Loki (log),
+1. **`common-observability`** — libreria condivisa dai servizi: aspect AOP per il logging di esecuzione, correlation id in MDC, log strutturati in JSON (ECS), e aspect `@Auditable` per gli eventi di audit di business.
+2. **Stack Grafana** nel `docker-compose.yml` — Prometheus (metriche), Loki (log operativi),
    Promtail (spedizione), Grafana (UI con data source e dashboard pre-configurate).
+
+> [!NOTE]
+> Questa guida copre l'**osservabilità tecnica e operativa** (log, metriche Micrometer, tracing).
+> Per il tracciamento e la persistenza degli **eventi di dominio e audit di business** (utente, azione, risorsa, Kafka, PostgreSQL), consulta la guida dedicata: [docs/audit-logging.md](audit-logging.md).
 
 ```
                  ┌──────────────────────────────────────────┐
