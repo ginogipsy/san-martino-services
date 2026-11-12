@@ -1,0 +1,15 @@
+# ---------------------------------------------------------------------------
+# Risorse di CLUSTER per il cloud, separate dall'overlay applicativo:
+#
+#   kubectl apply -k k8s/overlays/cloud/cluster
+#
+# Separate per due ragioni. I ClusterIssuer sono oggetti cluster-scoped di una
+# CRD: Kustomize non lo sa, e l'overlay applicativo (`namespace: sanmartino`)
+# gli aggiungerebbe un namespace. E richiedono cert-manager già installato,
+# quindi vanno applicati dopo di lui e prima dell'applicativo.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - cluster-issuers.yaml

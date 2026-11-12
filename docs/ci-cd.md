@@ -68,13 +68,24 @@ Uno step finale rimuove `~/.m2/repository/com/ginogipsy` prima del salvataggio: 
 
 ## Job 2 — Immagini OCI
 
-Matrice di 6 servizi, `fail-fast: false`.
+Matrice di 6 servizi, `fail-fast: false`. Un solo `Dockerfile`, nella radice, per tutti e sei:
 
 ```bash
-./mvnw -pl :<service> -am -DskipTests package spring-boot:build-image
+docker build --build-arg SERVICE=<service> -t ghcr.io/ginogipsy/sanmartino/<service>:<versione> .
 ```
 
-`-pl :artifactId -am` costruisce solo il modulo target più il parent; il goal `build-image` è no-op sui progetti `pom`, quindi il parent nel reactor non è un problema (verificato).
+Il context è la radice del repo perché Maven ha bisogno del parent pom e di `common-observability`. Dentro:
+
+| Stage | Immagine | Cosa fa |
+|---|---|---|
+| `build` | `eclipse-temurin:25-jdk` | `./mvnw -pl :<service> -am -DskipTests package`, `~/.m2` in una cache mount di BuildKit; poi `jarmode=tools extract --layers` |
+| runtime | `eclipse-temurin:25-jre` | i quattro layer del jar (dipendenze → loader → snapshot → applicazione), utente `10001` non root, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
+
+Il runner non ha bisogno di JDK né della cache `~/.m2`: Maven gira dentro lo stage di build. `.dockerignore` esclude `target/` — in locale contiene jar di versioni vecchie che il glob dello stage raccoglierebbe — oltre a `.git`, docs e qualunque file di credenziali.
+
+### Java 25 LTS e Dockerfile multi-stage
+
+Con la migrazione al task #045, il monorepo è standardizzato su **Java 25 (LTS)** (`eclipse-temurin:25`). Questa scelta assicura supporto a lungo termine dai vendor (Temurin, Zulu), aggiornamenti di sicurezza regolari e massima stabilità con Spring Boot 4 e i builder container.
 
 ## Job Release
 
@@ -140,5 +151,26 @@ Richiede il secret **`QODANA_TOKEN`** nelle repository secrets.
 ```bash
 docker compose up -d vault vault-init      # secret KV richiesti dai test
 ./mvnw clean verify                        # build + test completi
-./mvnw -pl :events-service -am -DskipTests package spring-boot:build-image
+docker build --build-arg SERVICE=events-service -t sanmartino/events-service:dev .
 ```
+
+## Kubernetes & Kustomize
+
+L'infrastruttura di orchestrazione risiede in `k8s/` ed è validata in CI tramite render Kustomize:
+
+```bash
+# Validazione statica dei manifest locali e cloud
+kubectl kustomize k8s/overlays/local > /dev/null
+kubectl kustomize k8s/overlays/cloud > /dev/null
+kubectl kustomize k8s/overlays/cloud/cluster > /dev/null
+```
+
+Per l'avvio e la gestione completa dell'ambiente di sviluppo locale su cluster Kind:
+
+```bash
+./scripts/k8s-dev-up.sh       # crea il cluster, compila le immagini e distribuisce i servizi
+./scripts/k8s-dev-down.sh     # elimina il cluster
+```
+
+Tutti i dettagli architetturali e operativi sono documentati in **[`docs/kubernetes.md`](./kubernetes.md)**.
+

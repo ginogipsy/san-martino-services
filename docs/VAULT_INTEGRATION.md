@@ -170,3 +170,25 @@ docker exec -e VAULT_ADDR='http://127.0.0.1:8200' -e VAULT_TOKEN='my-root-token'
 *   **Precedenza delle Proprietà:** Spring Boot carica le proprietà da diverse fonti con una specifica precedenza. I segreti da Vault hanno una precedenza elevata, ma possono essere sovrascritti da variabili d'ambiente o argomenti della riga di comando.
 *   **Versioning (KVv2):** Il KV Secrets Engine v2 di Vault mantiene una cronologia delle modifiche ai segreti. Ogni `vault kv put` crea una nuova versione. Questo permette rollback e audit.
 *   **Segreti Comuni:** Se hai segreti che sono uguali per tutti gli ambienti, puoi metterli nel percorso `secret/<NOME_SERVIZIO>` e non duplicarli nei percorsi specifici per ambiente. I percorsi specifici per ambiente sovrascriveranno solo le proprietà che definiscono.
+
+---
+
+#### 7. **Integrazione con Kubernetes (Kubernetes Auth Method)**
+
+Nel cluster Kubernetes (`k8s/components/vault-k8s-auth` e `k8s/overlays/cloud`), l'autenticazione statica tramite token è sostituita dal metodo **Kubernetes Auth**:
+
+1. **ServiceAccount dedicata:** ogni servizio gira con la propria `ServiceAccount` (es. `auth-service`, `events-service`).
+2. **Projected Volume Token:** il pod proietta il token di service account firmato dal cluster Kubernetes specificando l'audience `vault`:
+   ```yaml
+   volumes:
+     - name: vault-token
+       projected:
+         sources:
+           - serviceAccountToken:
+               path: token
+               audience: vault
+               expirationSeconds: 3600
+   ```
+3. **Autenticazione trasparente:** Spring Cloud Vault legge automaticamente il token proiettato da `/var/run/secrets/kubernetes.io/serviceaccount/token` ed effettua il login all'endpoint `auth/kubernetes/login` specificando il proprio ruolo.
+4. **Policy e Ruoli (`configure.sh`):** lo script `k8s/components/vault-dev/scripts/configure.sh` configura il backend di auth e associa ogni ruolo alla corrispondente `ServiceAccount` e policy di lettura con privilegi minimi (`secret/data/<service>/*`).
+

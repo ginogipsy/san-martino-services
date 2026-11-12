@@ -1,0 +1,14 @@
+# TLS sull'Ingress dell'applicativo: cert-manager vede l'annotazione, chiede il
+# certificato per l'host e lo salva nel Secret sanmartino-tls. Host ed
+# emittente arrivano da cloud-settings (kustomization.yaml, replacements).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sanmartino
+  annotations:
+    cert-manager.io/cluster-issuer: set-by-replacement
+spec:
+  tls:
+    - hosts:
+        - set-by-replacement
+      secretName: sanmartino-tls

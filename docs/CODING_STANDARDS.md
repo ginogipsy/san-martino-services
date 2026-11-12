@@ -129,7 +129,7 @@ Mai `@Autowired` su campo: rende i campi non-`final`, nasconde le dipendenze e i
 
 ### Record per i tipi immutabili
 
-Java 26: usare `record` per DTO, value object e `@ConfigurationProperties`. Lombok resta ammesso sulle entity JPA (dove servono costruttori no-arg e mutabilità), non altrove.
+Java 25 (LTS): usare `record` per DTO, value object e `@ConfigurationProperties`. Lombok resta ammesso sulle entity JPA (dove servono costruttori no-arg e mutabilità), non altrove.
 
 ### Transazioni nel service, non nel controller
 
@@ -155,14 +155,18 @@ Vedi `docs/ci-cd.md` per come far girare i test in locale (serve `docker compose
 
 ## 4. Git e PR
 
-- **Branching: git flow.** `feature/*` → PR verso `develop`. `release/*` e `hotfix/*` → `master`, con back-merge su `develop`.
-- **Messaggi di commit:** convenzione del repo `(#NNN) descrizione all'infinito inglese`, dove `NNN` è il numero della issue o del task.
+- **Branching: git flow.** `feature/*` e `bugfix/*` → PR verso `develop`. `release/*` e `hotfix/*` → `master`, con back-merge su `develop`.
+- **Naming dei branch (OBBLIGATORIO):** il nome del branch deve sempre contenere il numero della issue a 3 cifre:
+  - `feature/<NNN>-<descrizione-kebab-case>` (es. `feature/043-audit-log-business`)
+  - `bugfix/<NNN>-<descrizione-kebab-case>` (es. `bugfix/021-fix-login-error`)
+- **Messaggi di commit (OBBLIGATORIO):** convenzione del repo `(#NNN) descrizione all'infinito inglese`, dove `NNN` è il numero della issue o del task.
   ```
-  (#003) added GitHub Actions CI/CD pipeline for the Maven monorepo
+  (#043) implement business audit logging library and aspect in common-observability
+  (#003) add GitHub Actions CI/CD pipeline for the Maven monorepo
   ```
 - **Un commit = un cambiamento logico.** Il fix di un bug scoperto strada facendo va in un commit separato, con il *perché* nel corpo: se non è ovvio dal diff, va scritto.
 - **Non committare mai** segreti, `target/`, sorgenti generati, `.env`.
-- `docs/api/` **è generato**: si rigenera con la catena in `docs/ci-cd.md`, non si edita a mano.
+- `docs/api/` **è generato**: si rigenera con la catena in `docs/ci-cd.md` (`npx @redocly/cli`), non si edita a mano.
 
 ---
 

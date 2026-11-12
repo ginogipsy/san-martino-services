@@ -1,0 +1,85 @@
+# user-panel — pannello Angular servito da nginx (repo san-martino-user-panel).
+# L'immagine gira come UID 101 sulla 8080 (nginx-unprivileged): vedi il suo Dockerfile.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-panel
+  labels:
+    app.kubernetes.io/name: user-panel
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: user-panel
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: user-panel
+        app.kubernetes.io/component: frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          # Tag fissato dall'overlay (images:), non qui.
+          image: ghcr.io/ginogipsy/san-martino-user-panel
+          ports:
+            - name: http
+              containerPort: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          lifecycle:
+            # Come i servizi (spring-boot-defaults.yaml): nginx si spegne in un
+            # attimo, e senza questa attesa le richieste che arrivano prima che
+            # l'Ingress tolga il pod dagli endpoint finiscono nel vuoto.
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # nginx-unprivileged tiene pid e file temporanei in /tmp.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-panel
+  labels:
+    app.kubernetes.io/name: user-panel
+spec:
+  selector:
+    app.kubernetes.io/name: user-panel
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

@@ -2,10 +2,13 @@
 
 Due pezzi, pensati per funzionare insieme:
 
-1. **`common-observability`** — libreria condivisa dai sei servizi: un aspect AOP che logga
-   le invocazioni dei metodi, un correlation id in MDC, log strutturati in JSON.
-2. **Stack Grafana** nel `docker-compose.yml` — Prometheus (metriche), Loki (log),
+1. **`common-observability`** — libreria condivisa dai servizi: aspect AOP per il logging di esecuzione, correlation id in MDC, log strutturati in JSON (ECS), e aspect `@Auditable` per gli eventi di audit di business.
+2. **Stack Grafana** nel `docker-compose.yml` — Prometheus (metriche), Loki (log operativi),
    Promtail (spedizione), Grafana (UI con data source e dashboard pre-configurate).
+
+> [!NOTE]
+> Questa guida copre l'**osservabilità tecnica e operativa** (log, metriche Micrometer, tracing).
+> Per il tracciamento e la persistenza degli **eventi di dominio e audit di business** (utente, azione, risorsa, Kafka, PostgreSQL), consulta la guida dedicata: [docs/audit-logging.md](audit-logging.md).
 
 ```
                  ┌──────────────────────────────────────────┐
@@ -404,10 +407,23 @@ traffico, p95, 4xx/5xx, heap, invocazioni fallite estratte dai log e il pannello
 **Explore → Prometheus**:
 
 ```promql
-sum by (application) (rate(http_server_requests_seconds_count[1m]))
-histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket[5m])))
+sum by (application) (rate(http_server_requests_seconds_count{uri!~"/actuator.*"}[1m]))
+histogram_quantile(0.95, sum by (le, application) (rate(http_server_requests_seconds_bucket{uri!~"/actuator.*"}[5m])))
 sum by (application) (jvm_memory_used_bytes{area="heap"})
 ```
+
+Il filtro `uri!~"/actuator.*"` toglie probe e scrape, che passano anche loro da
+`http_server_requests`: in Kubernetes, con le probe ogni 5 e 10 secondi, valgono
+circa 0,37 richieste al secondo per servizio anche a sistema fermo, e coprirebbero
+il traffico vero. I pannelli HTTP della dashboard usano lo stesso filtro.
+
+### Stack di Osservabilità in Kubernetes (`k8s/components/observability`)
+
+Nel cluster Kubernetes lo stack è distribuito tramite il componente Kustomize dedicato:
+
+- **Prometheus (v3.2):** Sostituisce il target statico `host.docker.internal` con il discovery automatico dei pod annotati (`prometheus.io/scrape: "true"`) attraverso `kubernetes_sd_configs`, circoscritto tramite RBAC al solo namespace `sanmartino`.
+- **Grafana Alloy (v1.21):** Raccoglie i log applicativi direttamente dall'API di Kubernetes (`loki.source.kubernetes`) e li inoltra a Loki. Gira come `Deployment` a replica singola anziché `DaemonSet`, garantendo la piena compatibilità con il profilo Pod Security Admission `restricted` (che proibisce volumi `hostPath`).
+- **Loki (3.4) & Grafana (11.6):** Riusano direttamente i file di configurazione e le dashboard JSON definiti in `docker/grafana/` grazie al componente Kustomize annidato `docker/kustomization.yaml`, garantendo una singola fonte di verità sia per Docker Compose che per Kubernetes.
 
 ---
 

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sanmartino
+  labels:
+    # Pod Security Admission: i pod devono rispettare il profilo `restricted`
+    # (non root, niente privilege escalation, capability rimosse, seccomp).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

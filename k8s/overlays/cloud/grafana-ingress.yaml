@@ -1,0 +1,25 @@
+# Grafana su un host proprio, in HTTPS. Host ed emittente arrivano da
+# cloud-settings (kustomization.yaml, replacements).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  annotations:
+    cert-manager.io/cluster-issuer: set-by-replacement
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - set-by-replacement
+      secretName: grafana-tls
+  rules:
+    - host: set-by-replacement
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  name: http

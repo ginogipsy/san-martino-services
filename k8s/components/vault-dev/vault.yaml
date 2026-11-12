@@ -1,0 +1,205 @@
+# vault — Vault in dev mode per il cluster locale, come il servizio vault del
+# docker-compose.yml: storage in memoria, già unsealed, root token dal Secret
+# vault-token.
+#
+# Il container `seed` sostituisce vault-init, ma non è un Job: lo storage in
+# memoria si azzera a ogni riavvio di Vault, e un Job già completato non
+# ripartirebbe. Il seed invece resta acceso nello stesso pod, si accorge che i
+# dati mancano e li riscrive; la sua readiness tiene il pod fuori dal Service
+# finché i secret non ci sono.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+---
+# Vault valida i token dei servizi chiamando la TokenReview API con il token
+# della propria ServiceAccount: serve system:auth-delegator.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sanmartino-vault-tokenreview
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: sanmartino
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  labels:
+    app.kubernetes.io/name: vault
+    app.kubernetes.io/component: secrets
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # Dev mode non regge due istanze (ognuna avrebbe il proprio storage in
+  # memoria): niente sovrapposizione durante un aggiornamento.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault
+        app.kubernetes.io/component: secrets
+    spec:
+      serviceAccountName: vault
+      enableServiceLinks: false
+      securityContext:
+        # Utente `vault` dell'immagine.
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vault
+          image: hashicorp/vault:1.21.1
+          # L'entrypoint dell'immagine fa chown e setcap pensando di partire
+          # come root: da non root fallirebbero. Si lancia Vault direttamente.
+          # In dev mode mlock è spento, quindi IPC_LOCK non serve.
+          command: ["vault", "server", "-dev", "-dev-no-store-token"]
+          env:
+            - name: VAULT_DEV_LISTEN_ADDRESS
+              value: 0.0.0.0:8200
+            - name: VAULT_DEV_ROOT_TOKEN_ID
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: token
+          ports:
+            - name: http
+              containerPort: 8200
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+        - name: seed
+          image: hashicorp/vault:1.21.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              # Ciclo, non one-shot: dopo un riavvio di Vault i dati vanno riscritti.
+              while true; do
+                if ! vault kv get secret/vault-seed >/dev/null 2>&1; then
+                  if vault status >/dev/null 2>&1; then
+                    echo "Vault senza dati: configurazione e seed"
+                    if sh /scripts/configure.sh && sh /scripts/seed-secrets.sh; then
+                      echo "Seed completato"
+                    else
+                      echo "Seed fallito, nuovo tentativo fra 5 s" >&2
+                    fi
+                  fi
+                fi
+                sleep 5
+              done
+          env:
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: token
+            # Gli stessi Secret dei Postgres (infra-local).
+            - name: AUTH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-auth
+                  key: password
+            - name: EVENTS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-events
+                  key: password
+            - name: STANDS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-stands
+                  key: password
+            - name: SAGA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-saga
+                  key: password
+            - name: AUDIT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-audit
+                  key: password
+            # Facoltativo: il client del realm oggi è pubblico (vedi seed-secrets.sh).
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-client
+                  key: secret
+                  optional: true
+          # Pronto solo quando il marcatore esiste, cioè quando tutti i secret
+          # sono stati scritti: i servizi non leggono un Vault vuoto.
+          readinessProbe:
+            exec:
+              command: ["vault", "kv", "get", "secret/vault-seed"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: vault-seed-scripts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  labels:
+    app.kubernetes.io/name: vault
+spec:
+  selector:
+    app.kubernetes.io/name: vault
+  ports:
+    - name: http
+      port: 8200
+      targetPort: http

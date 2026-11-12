@@ -29,11 +29,12 @@
         <module>saga-orchestrator</module>
         <module>notifications-service</module>
         <module>auth-service</module>
+        <module>audit-service</module>
     </modules>
 
     <properties>
-        <revision>1.1.12</revision>
-        <java.version>26</java.version>
+        <revision>1.1.13</revision>
+        <java.version>25</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -45,7 +46,7 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-boot.version>4.0.6</spring-boot.version>
 
-        <!-- Docker image config (Buildpacks) -->
+        <!-- Nome delle immagini OCI: lo usano Dockerfile e workflow (docker.image.prefix) -->
         <docker.image.registry>ghcr.io</docker.image.registry>
         <docker.image.owner>ginogipsy</docker.image.owner>
         <docker.image.prefix>${docker.image.registry}/${docker.image.owner}/sanmartino</docker.image.prefix>

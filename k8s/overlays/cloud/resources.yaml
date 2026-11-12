@@ -1,0 +1,23 @@
+# Risorse dei sei servizi Spring Boot in cloud (target per label in
+# kustomization.yaml). Più alte della base, che è dimensionata per far stare
+# tutto su un nodo kind.
+#
+# Le richieste di CPU contano anche per l'autoscaling: l'HPA ragiona in
+# percentuale della richiesta, e con i 100m della base scalerebbe al primo
+# carico. Sono valori di partenza, da rivedere sui dati di Grafana (heap e
+# latenza p95 per servizio).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resources
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              memory: 1Gi

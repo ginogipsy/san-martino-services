@@ -43,6 +43,11 @@ on:
       - '**/src/main/resources/**'
       # Infra usata dai test (Vault/Kafka/Postgres) e la pipeline stessa
       - 'docker-compose.yml'
+      # Build delle immagini dei servizi
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/**'
+      - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
       # NB: 'docs/**' NON è nella lista — vedi job "docs" (anti-loop)
@@ -63,6 +68,11 @@ on:
       - 'api/**/*.yml'
       - '**/src/main/resources/**'
       - 'docker-compose.yml'
+      # Build delle immagini dei servizi
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'k8s/**'
+      - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
@@ -78,7 +88,7 @@ permissions:
   contents: read
 
 env:
-  JAVA_VERSION: '26'
+  JAVA_VERSION: '25'
   JAVA_DISTRIBUTION: 'temurin'
   # MAVEN_ARGS è letto nativamente da Maven >= 3.9 (il wrapper qui usa 3.9.11):
   # evita di ripetere i flag su ogni invocazione di ./mvnw.
@@ -93,7 +103,7 @@ jobs:
   # =========================================================================
   build-test:
     # NB: il context `env` non è disponibile in jobs.<id>.name → versione literal.
-    name: Build & Test (JDK 26)
+    name: Build & Test (JDK 25)
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -106,7 +116,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: ${{ env.JAVA_DISTRIBUTION }}
           java-version: ${{ env.JAVA_VERSION }}
@@ -184,6 +194,9 @@ jobs:
           AUTH_DB_URL: jdbc:postgresql://localhost:5437/auth
           AUTH_DB_USER: auth
           AUTH_DB_PASSWORD: auth
+          AUDIT_DB_URL: jdbc:postgresql://localhost:5438/audit
+          AUDIT_DB_USER: audit
+          AUDIT_DB_PASSWORD: audit
           KAFKA_BOOTSTRAP: localhost:9092
 
       - name: Publish test report
@@ -217,11 +230,42 @@ jobs:
         run: rm -rf ~/.m2/repository/com/ginogipsy
 
   # =========================================================================
-  # 2. IMMAGINI OCI — un job per servizio, in parallelo (Buildpacks)
+  # 2. VALIDATE-K8S — render Kustomize e validazione statica dei manifest
+  # =========================================================================
+  validate-k8s:
+    name: Validate Kubernetes Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Generate dummy secrets for local overlay validation
+        run: |
+          mkdir -p k8s/overlays/local/secrets
+          for secret in vault-token postgres-events postgres-stands postgres-saga postgres-auth postgres-audit postgres-keycloak keycloak-admin grafana-admin; do
+            echo "password=dummy" > "k8s/overlays/local/secrets/${secret}.env"
+          done
+
+      - name: Validate local overlay render
+        run: kubectl kustomize k8s/overlays/local > /dev/null
+
+      - name: Validate cloud overlay render
+        run: kubectl kustomize k8s/overlays/cloud > /dev/null
+
+      - name: Validate cloud cluster issuers render
+        run: kubectl kustomize k8s/overlays/cloud/cluster > /dev/null
+
+  # =========================================================================
+  # 3. IMMAGINI OCI — un job per servizio, in parallelo (Dockerfile)
   # =========================================================================
   build-images:
     name: Image · ${{ matrix.service }}
-    needs: build-test
+    needs: [build-test, validate-k8s]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -239,6 +283,7 @@ jobs:
           - gateway
           - saga-orchestrator
           - notifications-service
+          - audit-service
 
     env:
       VERSION: ${{ needs.build-test.outputs.version }}
@@ -250,23 +295,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK ${{ env.JAVA_VERSION }}
-        uses: actions/setup-java@v5
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-
-      # cache/restore (non cache): 6 job paralleli che scrivono la stessa
-      # chiave si sovrascriverebbero a vicenda. La cache viene POPOLATA solo
-      # dal job build-test, qui è read-only.
-      - name: Restore Maven repository (read-only)
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-m2-
-
+      # Niente setup-java né cache ~/.m2: Maven gira DENTRO lo stage di build
+      # del Dockerfile, con JDK e dipendenze propri. Il runner serve solo Docker.
       - name: Log in to GHCR
         if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
@@ -276,16 +306,15 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # ---------------------------------------------------------------------
-      # -pl :<artifactId> -am  →  costruisce SOLO il modulo target (+ parent).
-      # Il goal build-image è no-op sui progetti `pom`, quindi il parent nel
-      # reactor non causa problemi.
-      # Test già eseguiti nel job precedente => -DskipTests.
+      # Dockerfile della radice, un servizio per volta (--build-arg SERVICE):
+      # dentro gira `./mvnw -pl :<service> -am -DskipTests package`, i test
+      # sono già passati nel job precedente. Il nome dell'immagine è lo stesso
+      # che producevano i buildpack: ${IMAGE_PREFIX}/<service>:${VERSION}.
       # ---------------------------------------------------------------------
-      - name: Build OCI image (Cloud Native Buildpacks)
+      - name: Build OCI image (Dockerfile)
         run: |
-          ./mvnw -pl :${{ matrix.service }} -am -DskipTests \
-                 package spring-boot:build-image \
-                 -Dspring-boot.build-image.publish=false
+          docker build --build-arg SERVICE=${{ matrix.service }} \
+                       -t "${IMAGE_PREFIX}/${{ matrix.service }}:${VERSION}" .
 
       - name: Image built (verify only)
         run: |

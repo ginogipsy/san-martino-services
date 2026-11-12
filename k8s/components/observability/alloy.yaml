@@ -1,0 +1,119 @@
+# alloy — raccolta dei log dei pod (alloy/config.alloy), al posto di Promtail.
+# Un Deployment, non un DaemonSet: legge i log dall'API di Kubernetes, quindi
+# non ha bisogno di girare su ogni nodo né di montare /var/log/pods (hostPath,
+# vietato dal profilo `restricted` del namespace).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alloy
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alloy
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: sanmartino
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  labels:
+    app.kubernetes.io/name: alloy
+    app.kubernetes.io/component: observability
+spec:
+  # Una sola istanza: due repliche senza clustering leggerebbero e
+  # spedirebbero due volte gli stessi log.
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alloy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alloy
+        app.kubernetes.io/component: observability
+    spec:
+      serviceAccountName: alloy
+      enableServiceLinks: false
+      securityContext:
+        # L'immagine parte come root ma contiene l'utente `alloy`.
+        runAsNonRoot: true
+        runAsUser: 473
+        runAsGroup: 473
+        fsGroup: 473
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.21.3
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/var/lib/alloy/data
+            # Default 127.0.0.1: le probe non lo raggiungerebbero.
+            - --server.http.listen-addr=0.0.0.0:12345
+            - --disable-reporting
+          ports:
+            - name: http
+              containerPort: 12345
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+              readOnly: true
+            # Stato di Alloy (fino a dove ha letto ogni stream). Su emptyDir: a
+            # un riavvio rilegge gli ultimi log, e Loki scarta le righe identiche.
+            - name: data
+              mountPath: /var/lib/alloy/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
+        - name: data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

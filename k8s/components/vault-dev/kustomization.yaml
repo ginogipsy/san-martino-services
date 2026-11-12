@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------------
+# Vault in dev mode + seed, SOLO per il cluster locale. In cloud Vault è
+# un'installazione vera (persistente, con unseal) che si configura con
+# scripts/configure.sh; i secret di produzione si scrivono a mano, mai da qui.
+#
+# Secret richiesti, che fornisce l'overlay (mai committati):
+#   vault-token        → chiave `token`: root token del Vault dev, e token dei
+#                        servizi finché usano l'auth TOKEN
+#   postgres-events, postgres-stands, postgres-saga, postgres-auth
+#                      → chiave `password` (gli stessi di infra-local)
+#   keycloak-client    → chiave `secret`, FACOLTATIVO (client del realm pubblico)
+#
+# Il seed configura anche l'auth method Kubernetes, così il componente
+# vault-k8s-auth (quello del cloud) si può provare anche in locale.
+# ---------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - vault.yaml
+
+# Il suffisso hash ricrea il pod di Vault quando uno script cambia: con lo
+# storage in memoria, il nuovo pod riparte vuoto e il seed riscrive tutto.
+configMapGenerator:
+  - name: vault-seed-scripts
+    files:
+      - scripts/configure.sh
+      - scripts/seed-secrets.sh
