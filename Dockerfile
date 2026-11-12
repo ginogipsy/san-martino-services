@@ -8,12 +8,12 @@
 # Il context è la radice del repo, non la cartella del modulo: Maven ha bisogno
 # del parent pom e di common-observability per costruire qualunque servizio.
 #
-# Perché un Dockerfile e non `spring-boot:build-image`: il builder Paketo non
-# include più una JRE 26 (Java 26 non è LTS ed è stata superata dalla 27), quindi
-# Buildpacks non riesce più a costruire le immagini. Dettagli in docs/ci-cd.md.
+# Perché un Dockerfile e non `spring-boot:build-image`: l'approccio Dockerfile
+# multi-stage estrae i jar a layer (spring-boot-loader, dependencies, application)
+# garantendo build e caching deterministici e indipendenti dal builder Paketo.
 # ---------------------------------------------------------------------------
 
-ARG JAVA_VERSION=26
+ARG JAVA_VERSION=25
 
 # --- Stage 1: build --------------------------------------------------------
 FROM eclipse-temurin:${JAVA_VERSION}-jdk AS build

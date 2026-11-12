@@ -88,7 +88,7 @@ permissions:
   contents: read
 
 env:
-  JAVA_VERSION: '26'
+  JAVA_VERSION: '25'
   JAVA_DISTRIBUTION: 'temurin'
   # MAVEN_ARGS è letto nativamente da Maven >= 3.9 (il wrapper qui usa 3.9.11):
   # evita di ripetere i flag su ogni invocazione di ./mvnw.
@@ -103,7 +103,7 @@ jobs:
   # =========================================================================
   build-test:
     # NB: il context `env` non è disponibile in jobs.<id>.name → versione literal.
-    name: Build & Test (JDK 26)
+    name: Build & Test (JDK 25)
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
