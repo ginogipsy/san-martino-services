@@ -121,7 +121,7 @@ Molti progetti enterprise adottano Protobuf per definire contratti gRPC e messag
   * Chiamate RPC sincrone ad altissima frequenza con requisiti di latenza sub-millisecondo.
   * Sistemi con decine di team distribuiti che condividono un repository `schema-registry` centralizzato.
 * **Perché in questo progetto è stato scelto Java Record + JSON:**
-  * **Ecosistema Omogeneo:** I microservizi di San Martino sono tutti sviluppati in Java 26 / Spring Boot 4.
+  * **Ecosistema Omogeneo:** I microservizi di San Martino sono tutti sviluppati in Java 25 (LTS) / Spring Boot 4.
   * **Zero Tooling Overhead:** Nessun bisogno di installare compilatori nativi `protoc`, plugin maven complessi o step di code generation per i messaggi interni.
   * **Persistenza Diretta PostgreSQL JSONB:** Il payload JSON dell'evento o dei suoi `metadata` mappa direttamente e trasparentemente sulle colonne JSONB di Postgres senza layer di transcodifica Protobuf-JSON.
   * **Manutenibilità e Leggibilità:** I messaggi su Kafka sono direttamente ispezionabili e leggibili dagli sviluppatori tramite CLI o Kafka UI in chiaro senza dover caricare descrittori `.proto`.

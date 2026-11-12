@@ -4,11 +4,11 @@ Monorepo Maven multi-module per il backend di **"Le cantine di San Martino"** (A
 
 ## Stack
 
-- Java 26 (non-LTS, bleeding edge)
+- Java 25 (LTS)
 - Spring Boot 4.0.6 / Spring Framework 7
 - PostgreSQL + Flyway
 - API-first con OpenAPI 3 + openapi-generator
-- Build immagini via `Dockerfile` multi-stage (Temurin 26) → GHCR
+- Build immagini via `Dockerfile` multi-stage (Temurin 25 LTS) → GHCR
 - Testing: JUnit 5 + Testcontainers + MockMvc
 - Observability: aspect AOP + log JSON (ECS) → Loki, metriche Actuator → Prometheus, UI Grafana
 

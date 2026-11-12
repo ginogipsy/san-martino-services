@@ -10,7 +10,7 @@ Il sistema è composto da tre repository locali interconnessi:
 
 ```
 /home/francesco-grossi/Projects/san-martino/
-├── san-martino-services/         # Backend monorepo Maven (Java 26 / Spring Boot 4.0.6) + K8s
+├── san-martino-services/         # Backend monorepo Maven (Java 25 LTS / Spring Boot 4.0.6) + K8s
 ├── san-martino-user-panel/       # Frontend Web SPA (Angular 21 / NGINX unprivileged)
 └── sanmartinoapp/                # Mobile App Android nativa (Kotlin / Jetpack Compose)
 ```

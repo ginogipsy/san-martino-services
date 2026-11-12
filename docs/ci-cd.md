@@ -78,16 +78,14 @@ Il context è la radice del repo perché Maven ha bisogno del parent pom e di `c
 
 | Stage | Immagine | Cosa fa |
 |---|---|---|
-| `build` | `eclipse-temurin:26-jdk` | `./mvnw -pl :<service> -am -DskipTests package`, `~/.m2` in una cache mount di BuildKit; poi `jarmode=tools extract --layers` |
-| runtime | `eclipse-temurin:26-jre` | i quattro layer del jar (dipendenze → loader → snapshot → applicazione), utente `10001` non root, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
+| `build` | `eclipse-temurin:25-jdk` | `./mvnw -pl :<service> -am -DskipTests package`, `~/.m2` in una cache mount di BuildKit; poi `jarmode=tools extract --layers` |
+| runtime | `eclipse-temurin:25-jre` | i quattro layer del jar (dipendenze → loader → snapshot → applicazione), utente `10001` non root, `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError` |
 
 Il runner non ha bisogno di JDK né della cache `~/.m2`: Maven gira dentro lo stage di build. `.dockerignore` esclude `target/` — in locale contiene jar di versioni vecchie che il glob dello stage raccoglierebbe — oltre a `.git`, docs e qualunque file di credenziali.
 
-### Perché non più Buildpacks
+### Java 25 LTS e Dockerfile multi-stage
 
-Fino al task #032 le immagini nascevano da `spring-boot:build-image`. Il builder `paketobuildpacks/builder-noble-java-tiny:latest` non include più una JRE 26 — offre 8, 11, 17, 21, 25 e 27 — e la build fallisce con `unable to find dependency for JRE 26` (verificato il 2026-10-28). Java 26 non è LTS ed è stata superata dalla 27, quindi non tornerà. `eclipse-temurin:26-jre` invece è ancora pubblicata.
-
-La configurazione `<image>` nei pom e lo skip in `common-observability` restano: sono inerti finché nessuno invoca `build-image`, e tornano utili se il progetto passa a una LTS (25), su cui Buildpacks funziona di nuovo. **Java 26 non riceve più aggiornamenti regolari**: la migrazione a 25 LTS è da pianificare come task a sé.
+Con la migrazione al task #045, il monorepo è standardizzato su **Java 25 (LTS)** (`eclipse-temurin:25`). Questa scelta assicura supporto a lungo termine dai vendor (Temurin, Zulu), aggiornamenti di sicurezza regolari e massima stabilità con Spring Boot 4 e i builder container.
 
 ## Job Release
 

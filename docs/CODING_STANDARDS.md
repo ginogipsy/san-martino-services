@@ -129,7 +129,7 @@ Mai `@Autowired` su campo: rende i campi non-`final`, nasconde le dipendenze e i
 
 ### Record per i tipi immutabili
 
-Java 26: usare `record` per DTO, value object e `@ConfigurationProperties`. Lombok resta ammesso sulle entity JPA (dove servono costruttori no-arg e mutabilità), non altrove.
+Java 25 (LTS): usare `record` per DTO, value object e `@ConfigurationProperties`. Lombok resta ammesso sulle entity JPA (dove servono costruttori no-arg e mutabilità), non altrove.
 
 ### Transazioni nel service, non nel controller
 
