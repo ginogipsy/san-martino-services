@@ -144,45 +144,49 @@ public class ObservabilityAutoConfiguration {
          * config": Kafka passa a {@code configure()} una {@code RecordingMap}, che segna
          * come usata ogni chiave letta con {@code get()}.
          */
-        @Bean
+        @Configuration(proxyBeanMethods = false)
         @ConditionalOnClass(DefaultKafkaProducerFactoryCustomizer.class)
-        @ConditionalOnMissingBean(name = "kafkaCorrelationProducerFactoryCustomizer")
-        public DefaultKafkaProducerFactoryCustomizer kafkaCorrelationProducerFactoryCustomizer(
-                ObservabilityProperties properties) {
-            ObservabilityProperties.Correlation correlation = properties.correlation();
-            return producerFactory -> producerFactory.updateConfigs(Map.of(
-                    ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
-                    withCorrelationInterceptor(producerFactory.getConfigurationProperties()),
-                    KafkaCorrelationInterceptor.HEADER_NAME_CONFIG, correlation.headerName(),
-                    KafkaCorrelationInterceptor.MDC_KEY_CONFIG, correlation.mdcKey()));
-        }
+        static class KafkaProducerCustomizerConfiguration {
 
-        /**
-         * {@code updateConfigs} sovrascrive la chiave, non la accoda: senza questo merge
-         * un {@code interceptor.classes} configurato dal servizio verrebbe perso.
-         */
-        private static String withCorrelationInterceptor(Map<String, Object> producerConfigs) {
-            String correlationInterceptor = KafkaCorrelationInterceptor.class.getName();
-            String configured = asCsv(producerConfigs.get(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG));
-            if (configured.isBlank() || configured.contains(correlationInterceptor)) {
-                return configured.isBlank() ? correlationInterceptor : configured;
+            @Bean
+            @ConditionalOnMissingBean(name = "kafkaCorrelationProducerFactoryCustomizer")
+            public DefaultKafkaProducerFactoryCustomizer kafkaCorrelationProducerFactoryCustomizer(
+                    ObservabilityProperties properties) {
+                ObservabilityProperties.Correlation correlation = properties.correlation();
+                return producerFactory -> producerFactory.updateConfigs(Map.of(
+                        ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
+                        withCorrelationInterceptor(producerFactory.getConfigurationProperties()),
+                        KafkaCorrelationInterceptor.HEADER_NAME_CONFIG, correlation.headerName(),
+                        KafkaCorrelationInterceptor.MDC_KEY_CONFIG, correlation.mdcKey()));
             }
-            return configured + "," + correlationInterceptor;
-        }
 
-        /** {@code interceptor.classes} ammette CSV, {@code List<String>} e {@code List<Class>}. */
-        private static String asCsv(Object configured) {
-            return switch (configured) {
-                case null -> "";
-                case Collection<?> classes -> classes.stream()
-                        .map(KafkaObservabilityConfiguration::className)
-                        .collect(Collectors.joining(","));
-                default -> configured.toString();
-            };
-        }
+            /**
+             * {@code updateConfigs} sovrascrive la chiave, non la accoda: senza questo merge
+             * un {@code interceptor.classes} configurato dal servizio verrebbe perso.
+             */
+            private static String withCorrelationInterceptor(Map<String, Object> producerConfigs) {
+                String correlationInterceptor = KafkaCorrelationInterceptor.class.getName();
+                String configured = asCsv(producerConfigs.get(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG));
+                if (configured.isBlank() || configured.contains(correlationInterceptor)) {
+                    return configured.isBlank() ? correlationInterceptor : configured;
+                }
+                return configured + "," + correlationInterceptor;
+            }
 
-        private static String className(Object value) {
-            return value instanceof Class<?> type ? type.getName() : String.valueOf(value);
+            /** {@code interceptor.classes} ammette CSV, {@code List<String>} e {@code List<Class>}. */
+            private static String asCsv(Object configured) {
+                return switch (configured) {
+                    case null -> "";
+                    case Collection<?> classes -> classes.stream()
+                            .map(KafkaProducerCustomizerConfiguration::className)
+                            .collect(Collectors.joining(","));
+                    default -> configured.toString();
+                };
+            }
+
+            private static String className(Object value) {
+                return value instanceof Class<?> type ? type.getName() : String.valueOf(value);
+            }
         }
     }
 
