@@ -16,20 +16,24 @@ Monorepo Maven multi-module per il backend di **"Le cantine di San Martino"** (A
 
 ```
 gateway (Spring Cloud Gateway + Resilience4j)
+  ├─→ auth-service (Postgres + Keycloak)
   ├─→ events-service (Postgres)
   ├─→ stands-service (Postgres)
   ├─→ saga-orchestrator (Postgres)
+  ├─→ audit-service (Postgres)
   └─→ notifications-service (Kafka consumer + FCM)
 infra: Keycloak • Kafka • Grafana/Loki/Prometheus (Tempo: da fare)
 ```
 
 Tutti i servizi dipendono da `common-observability`, la libreria condivisa con l'aspect di
-logging e il correlation id — vedi [docs/observability.md](docs/observability.md).
+logging, correlation id e audit logging AOP (`@Auditable`) — vedi [docs/observability.md](docs/observability.md) e [docs/audit-logging.md](docs/audit-logging.md).
 
 ## Stato attuale
 
 - ✅ `events-service` — scaffold completo (in corso)
-- ⬜ `stands-service`
+- ✅ `stands-service`
+- ✅ `auth-service`
+- ✅ `audit-service`
 - ⬜ `gateway`
 - ⬜ `saga-orchestrator`
 - ⬜ `notifications-service`
@@ -94,6 +98,7 @@ docker build --build-arg SERVICE=events-service -t sanmartino/events-service:dev
 | [docs/RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md) | **Guida ai Rilasci e Versionamento (Smart Versioning)** |
 | [docs/ci-cd.md](docs/ci-cd.md) | pipeline GitHub Actions, cache monorepo, publishing GHCR, docs generate |
 | [docs/observability.md](docs/observability.md) | aspect AOP di logging, correlation id, stack Prometheus/Loki/Grafana |
+| [docs/audit-logging.md](docs/audit-logging.md) | business audit logging, aspect `@Auditable`, Kafka topic, Postgres e API protetta |
 | [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md) | regole di codice, ID Sonar rilevanti, pattern architetturali |
 | [docs/VAULT_INTEGRATION.md](docs/VAULT_INTEGRATION.md) | integrazione Spring Cloud Vault |
 | [docs/kubernetes.md](docs/kubernetes.md) | architettura e guida all'infrastruttura Kubernetes (Kind e Cloud) |

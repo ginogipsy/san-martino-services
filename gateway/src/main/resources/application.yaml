@@ -30,6 +30,12 @@ spring:
                 - Path=/v1/sagas/**
               filters:
                 - CircuitBreaker=sagasCb,forward:/fallback/sagas
+            - id: audit
+              uri: ${AUDIT_URI:http://localhost:8086}
+              predicates:
+                - Path=/v1/audit-logs/**
+              filters:
+                - CircuitBreaker=auditCb,forward:/fallback/audit
     vault:
       host: localhost
       port: 8200
@@ -78,11 +84,18 @@ resilience4j:
         failureRateThreshold: 50
         waitDurationInOpenState: 10s
         permittedNumberOfCallsInHalfOpenState: 3
+      auditCb:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
   timelimiter:
     instances:
       eventsCb:
         timeoutDuration: 5s
       standsCb:
+        timeoutDuration: 5s
+      auditCb:
         timeoutDuration: 5s
       # Una saga non è una singola query: create-event-with-stands fa tre passi
       # sincroni (events-service, stands-service, persistenza locale) e ognuno può

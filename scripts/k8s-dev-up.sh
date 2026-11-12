@@ -37,13 +37,13 @@ KIND="${KIND:-kind}"
 TAG=dev
 BACKEND_IMAGE=ghcr.io/ginogipsy/sanmartino
 PANEL_IMAGE=ghcr.io/ginogipsy/san-martino-user-panel
-SERVICES=(gateway auth-service events-service stands-service saga-orchestrator notifications-service)
+SERVICES=(gateway auth-service events-service stands-service saga-orchestrator notifications-service audit-service)
 # Avvio a fasi. Partendo tutti insieme, chi dipende da un altro pod (i servizi
 # da Vault e dai database, Keycloak dal suo Postgres) esce finché quello non
 # risponde, e il backoff di Kubernetes (10 s, 20 s, 40 s…) allunga l'avvio di
 # minuti. Ogni fase aspetta che la precedente sia pronta.
 DATA=(statefulset/postgres-events statefulset/postgres-stands statefulset/postgres-saga
-      statefulset/postgres-auth statefulset/postgres-keycloak statefulset/kafka
+      statefulset/postgres-auth statefulset/postgres-audit statefulset/postgres-keycloak statefulset/kafka
       deployment/vault)
 
 SKIP_BUILD=false
@@ -101,7 +101,7 @@ secret() {
     info "$(basename "$file"): generato"
 }
 secret vault-token "token=$(random)"
-for db in events stands saga auth keycloak; do
+for db in events stands saga auth audit keycloak; do
     secret "postgres-$db" "password=$(random)"
 done
 secret keycloak-admin username=admin "password=$(random)"

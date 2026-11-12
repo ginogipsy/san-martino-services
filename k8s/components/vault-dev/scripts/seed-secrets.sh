@@ -52,6 +52,12 @@ vault kv put secret/notifications-service \
 # FCM è spento (sanmartino.fcm.enabled=false): il path serve solo a risolvere
 # il placeholder. Quando si accende, il file va montato lì da un Secret.
 
+vault kv put secret/audit-service \
+    spring.datasource.url=jdbc:postgresql://postgres-audit:5432/audit \
+    spring.datasource.username=audit \
+    spring.datasource.password="$AUDIT_DB_PASSWORD" \
+    spring.kafka.bootstrap-servers=kafka:9092
+
 # Marcatore scritto per ULTIMO: se esiste, tutti i put sopra sono andati a buon
 # fine (set -e). È quello che controllano il ciclo e la readiness del seed.
 vault kv put secret/vault-seed seeded-at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

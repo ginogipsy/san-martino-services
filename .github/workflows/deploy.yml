@@ -68,6 +68,7 @@ on:
           - gateway
           - saga-orchestrator
           - notifications-service
+          - audit-service
 
 permissions:
   contents: read
@@ -147,7 +148,7 @@ jobs:
     strategy:
       fail-fast: false       # un servizio rotto non deve nascondere gli altri
       matrix:
-        service: ${{ fromJSON(inputs.service == 'all' && '["events-service","stands-service","auth-service","gateway","saga-orchestrator","notifications-service"]' || format('["{0}"]', inputs.service)) }}
+        service: ${{ fromJSON(inputs.service == 'all' && '["events-service","stands-service","auth-service","gateway","saga-orchestrator","notifications-service","audit-service"]' || format('["{0}"]', inputs.service)) }}
 
     steps:
       - name: Checkout

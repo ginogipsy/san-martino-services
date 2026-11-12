@@ -15,13 +15,15 @@ import java.util.List;
  * @param enabled     interruttore generale: a {@code false} non viene registrato né l'aspect né il filtro
  * @param logging     comportamento dell'aspect di logging dei metodi
  * @param correlation propagazione del correlation id verso MDC e servizi a valle
+ * @param audit       configurazione dell'audit log di business
  */
 @ConfigurationProperties("sanmartino.observability")
 public record ObservabilityProperties(
 
         @DefaultValue("true") boolean enabled,
         @DefaultValue Logging logging,
-        @DefaultValue Correlation correlation
+        @DefaultValue Correlation correlation,
+        @DefaultValue Audit audit
 ) {
 
     /**
@@ -58,6 +60,16 @@ public record ObservabilityProperties(
             @DefaultValue("true") boolean enabled,
             @DefaultValue("X-Correlation-Id") String headerName,
             @DefaultValue("correlationId") String mdcKey
+    ) {
+    }
+
+    /**
+     * @param enabled registra o no l'aspect e il publisher di audit
+     * @param topic   nome del topic Kafka su cui pubblicare gli eventi di business
+     */
+    public record Audit(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("sanmartino.audit.events") String topic
     ) {
     }
 }

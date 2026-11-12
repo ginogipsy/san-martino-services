@@ -4,7 +4,6 @@ description: 'How to write and run a dynamic workflow script with the `run_workf
 metadata:
   namespace: system
 ---
-
 # Dynamic workflows with `run_workflow`
 
 A workflow is a short Python script that the `run_workflow` tool executes. The

@@ -194,6 +194,9 @@ jobs:
           AUTH_DB_URL: jdbc:postgresql://localhost:5437/auth
           AUTH_DB_USER: auth
           AUTH_DB_PASSWORD: auth
+          AUDIT_DB_URL: jdbc:postgresql://localhost:5438/audit
+          AUDIT_DB_USER: audit
+          AUDIT_DB_PASSWORD: audit
           KAFKA_BOOTSTRAP: localhost:9092
 
       - name: Publish test report
@@ -273,6 +276,7 @@ jobs:
           - gateway
           - saga-orchestrator
           - notifications-service
+          - audit-service
 
     env:
       VERSION: ${{ needs.build-test.outputs.version }}

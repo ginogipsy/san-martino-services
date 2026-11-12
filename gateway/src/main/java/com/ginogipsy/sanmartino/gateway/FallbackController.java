@@ -42,6 +42,12 @@ public class FallbackController {
                         + "verificane lo stato invece di ripetere la richiesta.");
     }
 
+    @RequestMapping("/audit")
+    public ResponseEntity<ProblemDetail> auditFallback() {
+        return fallback("Audit service unavailable",
+                "Il microservizio Audit non risponde in tempo. Riprova tra qualche secondo.");
+    }
+
     private ResponseEntity<ProblemDetail> fallback(String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, detail);
         problem.setTitle(title);

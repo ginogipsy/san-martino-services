@@ -1,5 +1,6 @@
 package com.ginogipsy.sanmartino.stands.service;
 
+import com.ginogipsy.sanmartino.observability.audit.Auditable;
 import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
 import com.ginogipsy.sanmartino.stands.domain.MenuKind;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
@@ -35,12 +36,22 @@ public class StandService {
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:CREATE",
+            description = "'Creazione cantina: ' + #stand.name + ' (#' + #stand.number + ')'",
+            resourceId = "#result?.id?.toString()"
+    )
     public StandEntity create(StandEntity stand) {
         stand.setId(UUID.randomUUID());
         return repository.save(stand);
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:UPDATE",
+            description = "'Modifica cantina: ' + #update.name + ' (#' + #update.number + ')'",
+            resourceId = "#id?.toString()"
+    )
     public StandEntity update(UUID id, StandEntity update) {
         StandEntity current = findById(id);
         current.setNumber(update.getNumber());
@@ -54,6 +65,11 @@ public class StandService {
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:DELETE",
+            description = "'Eliminazione cantina: ' + #id",
+            resourceId = "#id?.toString()"
+    )
     public void delete(UUID id) {
         if (!repository.existsById(id)) {
             throw new StandNotFoundException(id);
@@ -70,6 +86,11 @@ public class StandService {
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:MENU_ITEM_ADD",
+            description = "'Aggiunta piatto al menu: ' + #item.name + ' per cantina ' + #standId",
+            resourceId = "#standId?.toString()"
+    )
     public MenuItemEntity addMenuItem(UUID standId, MenuItemEntity item) {
         StandEntity stand = findById(standId);
         item.setId(UUID.randomUUID());
@@ -78,6 +99,11 @@ public class StandService {
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:MENU_ITEM_UPDATE",
+            description = "'Modifica piatto menu: ' + #update.name + ' (' + #itemId + ') per cantina ' + #standId",
+            resourceId = "#standId?.toString()"
+    )
     public MenuItemEntity updateMenuItem(UUID standId, UUID itemId, MenuItemEntity update) {
         StandEntity stand = findById(standId);
         MenuItemEntity current = stand.getMenuItems().stream()
@@ -94,6 +120,11 @@ public class StandService {
     }
 
     @Transactional
+    @Auditable(
+            action = "STAND:MENU_ITEM_DELETE",
+            description = "'Eliminazione piatto menu: ' + #itemId + ' per cantina ' + #standId",
+            resourceId = "#standId?.toString()"
+    )
     public void deleteMenuItem(UUID standId, UUID itemId) {
         StandEntity stand = findById(standId);
         MenuItemEntity item = stand.getMenuItems().stream()
