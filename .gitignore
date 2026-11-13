@@ -39,3 +39,4 @@ out/
 .flattened-pom.xml
 **/.flattened-pom.xml!/.env
 !/.env
+/.env
