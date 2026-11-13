@@ -8,9 +8,13 @@ import com.ginogipsy.sanmartino.observability.audit.NoOpAuditPublisher;
 import com.ginogipsy.sanmartino.observability.audit.SecurityContextAuditUserResolver;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationInterceptor;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor;
+import io.micrometer.tracing.Tracer;
 import jakarta.servlet.Filter;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -43,7 +47,11 @@ import java.util.stream.Collectors;
  * le interfacce generate da openapi-generator e un proxy JDK perderebbe le
  * annotazioni MVC della classe).
  */
-@AutoConfiguration
+@AutoConfiguration(afterName = {
+        "org.springframework.boot.micrometer.tracing.opentelemetry.autoconfigure.OpenTelemetryTracingAutoConfiguration",
+        "org.springframework.boot.micrometer.tracing.autoconfigure.MicrometerTracingAutoConfiguration",
+        "org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration"
+})
 @EnableConfigurationProperties(ObservabilityProperties.class)
 @ConditionalOnProperty(prefix = "sanmartino.observability", name = "enabled", matchIfMissing = true)
 public class ObservabilityAutoConfiguration {
@@ -74,6 +82,23 @@ public class ObservabilityAutoConfiguration {
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
         registration.addUrlPatterns("/*");
         registration.setName("correlationIdFilter");
+        return registration;
+    }
+
+    @Bean
+    @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+    @ConditionalOnClass(Tracer.class)
+    @ConditionalOnMissingBean(name = "traceIdResponseFilterRegistration")
+    @ConditionalOnProperty(prefix = "sanmartino.observability.tracing", name = "enabled", matchIfMissing = true)
+    public FilterRegistrationBean<Filter> traceIdResponseFilterRegistration(
+            ObjectProvider<Tracer> tracerProvider, ObservabilityProperties properties) {
+        FilterRegistrationBean<Filter> registration = new FilterRegistrationBean<>(
+                new TraceIdResponseFilter(tracerProvider::getIfAvailable, properties.tracing().responseHeaderName()));
+        // Gira dopo ServerHttpObservationFilter (che ha Ordered.HIGHEST_PRECEDENCE + 1)
+        // così lo span HTTP è già aperto e contiene il traceId della richiesta.
+        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
+        registration.addUrlPatterns("/*");
+        registration.setName("traceIdResponseFilter");
         return registration;
     }
 
@@ -187,6 +212,34 @@ public class ObservabilityAutoConfiguration {
             private static String className(Object value) {
                 return value instanceof Class<?> type ? type.getName() : String.valueOf(value);
             }
+        }
+    }
+
+    /**
+     * Attiva l'osservazione Micrometer (span di produzione e consumo + propagazione W3C
+     * {@code traceparent} negli header Kafka) su ogni {@link KafkaTemplate} e
+     * {@link ConcurrentKafkaListenerContainerFactory}, incluse le factory custom dichiarate
+     * dai singoli servizi (es. {@code notifications-service}).
+     */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass({KafkaTemplate.class, ConcurrentKafkaListenerContainerFactory.class})
+    @ConditionalOnProperty(prefix = "sanmartino.observability.tracing", name = "enabled", matchIfMissing = true)
+    public static class KafkaTracingConfiguration {
+
+        @Bean
+        @ConditionalOnMissingBean(name = "kafkaTracingObservationBeanPostProcessor")
+        public static BeanPostProcessor kafkaTracingObservationBeanPostProcessor() {
+            return new BeanPostProcessor() {
+                @Override
+                public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {
+                    if (bean instanceof KafkaTemplate<?, ?> kafkaTemplate) {
+                        kafkaTemplate.setObservationEnabled(true);
+                    } else if (bean instanceof ConcurrentKafkaListenerContainerFactory<?, ?> factory) {
+                        factory.getContainerProperties().setObservationEnabled(true);
+                    }
+                    return bean;
+                }
+            };
         }
     }
 

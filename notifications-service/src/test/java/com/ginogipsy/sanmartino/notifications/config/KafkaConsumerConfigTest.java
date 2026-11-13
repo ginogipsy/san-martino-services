@@ -31,6 +31,7 @@ class KafkaConsumerConfigTest {
 
             assertThat(factory.getRecordInterceptor())
                     .isSameAs(context.getBean(KafkaCorrelationRecordInterceptor.class));
+            assertThat(factory.getContainerProperties().isObservationEnabled()).isTrue();
         });
     }
 

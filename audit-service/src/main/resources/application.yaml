@@ -21,6 +21,8 @@ spring:
     baseline-on-migrate: true
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    listener:
+      observation-enabled: true
     consumer:
       group-id: audit-service
       auto-offset-reset: earliest
@@ -56,6 +58,14 @@ sanmartino:
       topic: sanmartino.audit.events
 
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   metrics:
     tags:
       application: ${spring.application.name}
@@ -70,7 +80,21 @@ management:
     health:
       show-details: when-authorized
 
+# --- Logging & observability ---------------------------------------------
 logging:
   level:
     root: INFO
     com.ginogipsy.sanmartino: DEBUG
+  pattern:
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-},%X{correlationId:-}]"
+  file:
+    name: ${LOG_DIR:./logs}/${spring.application.name}.log
+  structured:
+    format:
+      console: ${LOG_CONSOLE_FORMAT:}
+      file: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${LOG_SERVICE_VERSION:0.0.1}
+        environment: ${LOG_ENVIRONMENT:local}

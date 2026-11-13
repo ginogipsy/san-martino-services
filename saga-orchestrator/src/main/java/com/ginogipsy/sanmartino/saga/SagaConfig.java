@@ -1,6 +1,8 @@
 package com.ginogipsy.sanmartino.saga;
 
 import com.ginogipsy.sanmartino.observability.CorrelationIdPropagationInterceptor;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,7 +10,6 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.web.client.RestClient;
 
 import java.time.Clock;
-import java.time.Duration;
 
 @Configuration
 @EnableJpaAuditing
@@ -20,26 +21,30 @@ public class SagaConfig {
     }
 
     /**
-     * L'interceptor del correlation id (bean di common-observability) va aggiunto a mano:
-     * questi client non partono dal {@code RestClient.Builder} auto-configurato, quindi
-     * i {@code RestClientCustomizer} non li toccherebbero. Senza di lui la saga
-     * risulterebbe scollegata dalle chiamate a events-service e stands-service in Loki.
+     * Aggancia sia {@link ObservationRegistry} (per la creazione degli span client e la
+     * propagazione automatica dell'header W3C {@code traceparent} verso events-service e
+     * stands-service) sia {@link CorrelationIdPropagationInterceptor} (per la propagazione
+     * di {@code X-Correlation-Id}).
      */
     @Bean
     public RestClient eventsRestClient(@Value("${clients.events-base-url:http://localhost:8081}") String baseUrl,
-                                       CorrelationIdPropagationInterceptor correlationId) {
-        return RestClient.builder()
+                                       CorrelationIdPropagationInterceptor correlationId,
+                                       ObjectProvider<ObservationRegistry> observationRegistry) {
+        RestClient.Builder builder = RestClient.builder()
                 .baseUrl(baseUrl)
-                .requestInterceptor(correlationId)
-                .build();
+                .requestInterceptor(correlationId);
+        observationRegistry.ifAvailable(builder::observationRegistry);
+        return builder.build();
     }
 
     @Bean
     public RestClient standsRestClient(@Value("${clients.stands-base-url:http://localhost:8082}") String baseUrl,
-                                       CorrelationIdPropagationInterceptor correlationId) {
-        return RestClient.builder()
+                                       CorrelationIdPropagationInterceptor correlationId,
+                                       ObjectProvider<ObservationRegistry> observationRegistry) {
+        RestClient.Builder builder = RestClient.builder()
                 .baseUrl(baseUrl)
-                .requestInterceptor(correlationId)
-                .build();
+                .requestInterceptor(correlationId);
+        observationRegistry.ifAvailable(builder::observationRegistry);
+        return builder.build();
     }
 }

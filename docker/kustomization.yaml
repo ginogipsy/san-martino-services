@@ -31,3 +31,6 @@ configMapGenerator:
   - name: loki-config
     files:
       - loki/loki-config.yml
+  - name: tempo-config
+    files:
+      - tempo/tempo-config.yml

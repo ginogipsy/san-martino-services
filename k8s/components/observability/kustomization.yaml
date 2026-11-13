@@ -21,6 +21,7 @@ kind: Component
 resources:
   - prometheus.yaml
   - loki.yaml
+  - tempo.yaml
   - alloy.yaml
   - grafana.yaml
 

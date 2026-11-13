@@ -261,6 +261,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -282,6 +283,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully # AGGIUNTO: auth-service parte solo dopo che vault-init ha finito
@@ -304,6 +306,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -324,6 +327,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -350,6 +354,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -368,6 +373,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -394,6 +400,7 @@ services:
       # In container i log escono su stdout: in JSON (ECS) Promtail li raccoglie dal
       # socket Docker con i campi gia' strutturati, come i file scritti sull'host.
       LOG_CONSOLE_FORMAT: ecs
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     depends_on:
       vault-init:
         condition: service_completed_successfully
@@ -403,15 +410,16 @@ services:
         condition: service_healthy
 
   # =========================================================================
-  # OSSERVABILITÀ — metriche (Prometheus), log (Loki + Promtail), UI (Grafana)
+  # OSSERVABILITÀ — metriche (Prometheus), log (Loki + Promtail),
+  #                 tracing distribuito (Tempo), UI (Grafana)
   #
   # Si avvia da sola, senza il resto dello stack:
-  #   docker compose up -d prometheus loki promtail grafana
+  #   docker compose up -d prometheus loki promtail tempo grafana
   #
-  # I sei servizi girano di norma sull'host (IntelliJ), non in container: per
-  # questo Prometheus li cerca su host.docker.internal e Promtail legge i file
-  # JSON che scrivono in ./logs. Dettagli in docs/observability.md.
-  # Tempo (tracing distribuito) resta il prossimo passo, non è qui.
+  # I sette servizi girano di norma sull'host (IntelliJ), non in container: per
+  # questo Prometheus li cerca su host.docker.internal, Promtail legge i file
+  # JSON che scrivono in ./logs, e i servizi spediscono gli span OTLP su
+  # localhost:4318. Dettagli in docs/observability.md.
   # =========================================================================
 
   prometheus:
@@ -461,6 +469,18 @@ services:
     depends_on:
       - loki
 
+  tempo:
+    image: grafana/tempo:2.7.1
+    container_name: san-martino-tempo
+    command: -config.file=/etc/tempo/tempo-config.yml
+    ports:
+      - "3200:3200" # API HTTP di Tempo (usata da Grafana e curl)
+      - "4317:4317" # Receiver OTLP gRPC
+      - "4318:4318" # Receiver OTLP HTTP (usato dai servizi Spring Boot)
+    volumes:
+      - ./docker/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
+      - tempo-data:/var/tempo
+
   grafana:
     image: grafana/grafana:11.6.0
     container_name: san-martino-grafana
@@ -475,13 +495,14 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Data source (Prometheus + Loki) e dashboard pre-configurate.
+      # Data source (Prometheus + Loki + Tempo) e dashboard pre-configurate.
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./docker/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
       - loki
+      - tempo
 
 volumes:
   postgres-events-data:
@@ -492,5 +513,6 @@ volumes:
   postgres-audit-data:
   prometheus-data:
   loki-data:
+  tempo-data:
   grafana-data:
   promtail-positions:
