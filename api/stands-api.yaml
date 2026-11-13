@@ -54,6 +54,63 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /v1/stands/search:
+    get:
+      tags: [stands]
+      summary: Ricerca intelligente cantine e piatti per nome, parole chiave e descrizione
+      description: |
+        Cerca tra tutte le cantine e i rispettivi piatti/bevande sfruttando il nome del piatto,
+        le parole chiave (`keywords`, es. `pasta, primo, sugo, guanciale`) e le descrizioni IT/EN,
+        ordinando i risultati per rilevanza (`score`) e disponibilità.
+      operationId: searchStands
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Testo ricercato (es. "pasta", "amatriciana", "guanciale", "tartufo")
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: Filtra i piatti corrispondenti per tipologia (FOOD o DRINK)
+          schema:
+            $ref: '#/components/schemas/MenuKind'
+        - name: onlyAvailable
+          in: query
+          required: false
+          description: Se true, considera solo i piatti con porzioni disponibili (`availablePlates > 0`)
+          schema:
+            type: boolean
+            default: false
+        - name: lat
+          in: query
+          required: false
+          description: Latitudine utente (opzionale) per boost di vicinanza GPS a parità di rilevanza
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: false
+          description: Longitudine utente (opzionale) per boost di vicinanza GPS a parità di rilevanza
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+      responses:
+        '200':
+          description: Risultati della ricerca ordinati per punteggio di rilevanza decrescente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StandSearchResult'
+
   /v1/stands/{id}:
     parameters:
       - $ref: '#/components/parameters/StandId'
@@ -475,6 +532,21 @@ components:
           type: string
         role:
           $ref: '#/components/schemas/OwnerRole'
+
+    StandSearchResult:
+      type: object
+      required: [stand, matchedItems, score]
+      properties:
+        stand:
+          $ref: '#/components/schemas/StandSummary'
+        matchedItems:
+          type: array
+          description: Piatti o bevande della cantina che corrispondono alla ricerca
+          items:
+            $ref: '#/components/schemas/MenuItem'
+        score:
+          type: integer
+          description: Punteggio di rilevanza calcolato dall'algoritmo di ricerca
 
     Problem:
       type: object
