@@ -10,11 +10,13 @@ import com.ginogipsy.sanmartino.stands.api.generated.model.OwnerCreate;
 import com.ginogipsy.sanmartino.stands.api.generated.model.OwnerRole;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandCreate;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandDetail;
+import com.ginogipsy.sanmartino.stands.api.generated.model.StandSearchResult;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandSummary;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandUpdate;
 import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandOwnerEntity;
+import com.ginogipsy.sanmartino.stands.service.StandService;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
@@ -81,6 +83,15 @@ public class StandMapper {
         );
         applyAuditing(entity, dto::setCreatedAt, dto::setUpdatedAt);
         return dto;
+    }
+
+    public StandSearchResult toSearchResult(StandService.StandSearchHit hit) {
+        List<MenuItem> matchedItems = hit.matchedItems().stream().map(this::toMenuItem).toList();
+        return new StandSearchResult(
+                toSummary(hit.stand()),
+                matchedItems,
+                hit.score()
+        );
     }
 
     public MenuItemEntity fromMenuItemCreate(MenuItemCreate dto) {

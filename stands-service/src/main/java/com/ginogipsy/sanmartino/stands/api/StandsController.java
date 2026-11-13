@@ -1,8 +1,10 @@
 package com.ginogipsy.sanmartino.stands.api;
 
 import com.ginogipsy.sanmartino.stands.api.generated.StandsApi;
+import com.ginogipsy.sanmartino.stands.api.generated.model.MenuKind;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandCreate;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandDetail;
+import com.ginogipsy.sanmartino.stands.api.generated.model.StandSearchResult;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandSummary;
 import com.ginogipsy.sanmartino.stands.api.generated.model.StandUpdate;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
@@ -29,6 +31,24 @@ public class StandsController implements StandsApi {
     @Override
     public ResponseEntity<List<StandSummary>> listStands() {
         return ResponseEntity.ok(service.findAll().stream().map(mapper::toSummary).toList());
+    }
+
+    @Override
+    public ResponseEntity<List<StandSearchResult>> searchStands(
+            String q,
+            MenuKind kind,
+            Boolean onlyAvailable,
+            Double lat,
+            Double lng
+    ) {
+        com.ginogipsy.sanmartino.stands.domain.MenuKind domainKind =
+                kind == null ? null : com.ginogipsy.sanmartino.stands.domain.MenuKind.valueOf(kind.getValue());
+        boolean availableOnly = Boolean.TRUE.equals(onlyAvailable);
+        List<StandSearchResult> results = service.searchStands(q, domainKind, availableOnly, lat, lng)
+                .stream()
+                .map(mapper::toSearchResult)
+                .toList();
+        return ResponseEntity.ok(results);
     }
 
     @Override
