@@ -1,18 +1,6 @@
 package com.ginogipsy.sanmartino.stands.api;
 
-import com.ginogipsy.sanmartino.stands.api.generated.model.LocalizedText;
-import com.ginogipsy.sanmartino.stands.api.generated.model.MenuItem;
-import com.ginogipsy.sanmartino.stands.api.generated.model.MenuItemCreate;
-import com.ginogipsy.sanmartino.stands.api.generated.model.MenuItemUpdate;
-import com.ginogipsy.sanmartino.stands.api.generated.model.MenuKind;
-import com.ginogipsy.sanmartino.stands.api.generated.model.Owner;
-import com.ginogipsy.sanmartino.stands.api.generated.model.OwnerCreate;
-import com.ginogipsy.sanmartino.stands.api.generated.model.OwnerRole;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandCreate;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandDetail;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandSearchResult;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandSummary;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandUpdate;
+import com.ginogipsy.sanmartino.stands.api.generated.model.*;
 import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandOwnerEntity;
@@ -92,6 +80,54 @@ public class StandMapper {
                 matchedItems,
                 hit.score()
         );
+    }
+
+    public StandAnalyticsSummary toAnalyticsSummary(StandService.AnalyticsSummaryView view) {
+        List<SearchQueryStat> topSearches = view.topSearchedQueries().stream()
+                .map(this::toSearchQueryStat)
+                .toList();
+        List<SearchQueryStat> zeroResults = view.zeroResultQueries().stream()
+                .map(this::toSearchQueryStat)
+                .toList();
+        List<MenuItemClickStat> topItems = view.topClickedMenuItems().stream()
+                .map(it -> new MenuItemClickStat(
+                        it.menuItemId(),
+                        it.menuItemName(),
+                        MenuKind.valueOf(it.kind().name()),
+                        it.standId(),
+                        it.standNumber(),
+                        it.standName(),
+                        it.clickCount()
+                ))
+                .toList();
+        List<StandClickStat> topStands = view.topClickedStands().stream()
+                .map(st -> new StandClickStat(
+                        st.standId(),
+                        st.standNumber(),
+                        st.standName(),
+                        st.interactionCount()
+                ))
+                .toList();
+        return new StandAnalyticsSummary(
+                view.totalSearches(),
+                view.totalInteractions(),
+                topSearches,
+                zeroResults,
+                topItems,
+                topStands
+        );
+    }
+
+    private SearchQueryStat toSearchQueryStat(StandService.SearchQueryStatView stat) {
+        SearchQueryStat dto = new SearchQueryStat(
+                stat.query(),
+                stat.searchCount(),
+                stat.avgResultsCount()
+        );
+        if (stat.lastSearchedAt() != null) {
+            dto.setLastSearchedAt(OffsetDateTime.ofInstant(stat.lastSearchedAt(), ZoneOffset.UTC));
+        }
+        return dto;
     }
 
     public MenuItemEntity fromMenuItemCreate(MenuItemCreate dto) {

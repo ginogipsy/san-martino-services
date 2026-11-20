@@ -4,7 +4,7 @@ Questo documento descrive l'architettura, l'algoritmo di scoring e la roadmap di
 
 ---
 
-## 1. Funzionalità Attualmente Implementate (`#052`)
+## 1. Funzionalità Attualmente Implementate (`#052` & `#055`)
 
 L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) esegue una ricerca cross-cantina combinando:
 
@@ -23,7 +23,18 @@ L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) 
    - Match tramite espansione sinonimi (`+65`) o descrizione IT/EN (`+40`).
    - **Bonus Multi-Token (`+40`)**: se tutti i termini cercati compaiono nello stesso piatto.
    - **Bonus Disponibilità (`+15`)**: premia i piatti con porzioni disponibili (`availablePlates > 0`).
+   - **Bonus Popolarità Click (`0..+25`)**: premia i piatti più cliccati dagli utenti (`MENU_ITEM_CLICK` con scala
+     logaritmica $\min(25, \text{round}(\ln(1 + \text{clicks}) \times 6))$).
    - **Bonus Vicinanza GPS (`0..+20`)**: formula di Haversine rispetto alle coordinate opzionali `lat`/`lng` dell'utente.
+6. **Tracciamento Analitico Ricerche & Click (`#055`)**:
+    - **Log automatico ricerche (`stand_search_logs`)**: ogni ricerca con query normalizzata di almeno 2 caratteri viene
+      salvata automaticamente con `raw_query`, `normalized_query`, `kind_filter`, `only_available` e `results_count`.
+    - **Tracciamento click e interazioni (`POST /v1/stands/analytics/interactions` → `stand_interaction_events`)**:
+      registra i click sui singoli piatti (`MENU_ITEM_CLICK`) e le aperture di menu cibo (`STAND_FOOD_OPEN`), bevande
+      (`STAND_DRINK_OPEN`), descrizione (`STAND_DESCRIPTION_OPEN`) e mappa (`STAND_MAP_OPEN`).
+    - **Riepilogo per Dashboard (`GET /v1/stands/analytics/summary?limit=10`)**: restituisce `topSearchedQueries`,
+      `zeroResultQueries` (piatti cercati dai visitatori ma assenti alla festa), `topClickedMenuItems` e
+      `topClickedStands`.
 
 ---
 
@@ -31,8 +42,9 @@ L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) 
 
 Le seguenti ottimizzazioni richiedono i dati dei moduli successivi della roadmap o estensioni infrastrutturali dedicate:
 
-- [ ] **TODO (Step 3 — Analytics & Popolarità di Ricerca)**:
-  - Integrare nel calcolo dello `score` un peso di popolarità dinamico basato sui piatti più cercati e più cliccati dagli utenti durante l'evento (`search_logs` / `click_events`).
+- [x] **COMPLETATO (`#055` — Step 3 — Analytics & Popolarità di Ricerca)**:
+    - Integrato nel calcolo dello `score` un peso di popolarità dinamico basato sui piatti più cliccati dagli utenti
+      (`stand_interaction_events`) e persistenza automatica delle ricerche (`stand_search_logs`).
 - [ ] **TODO (Step 4 — Recensioni & Rating Medio)**:
   - Aggiungere al ranking un boost proporzionale al voto medio approvato dai moderatori ($\text{Rating} \in [1..5]\star$) per il singolo piatto e per la cantina, così a parità di piatto (es. 3 cantine che cucinano le pizzelle) sale in cima quella più apprezzata.
 - [ ] **TODO (Step 6 — Pulsantiera IoT & Tempo di Attesa Live)**:

@@ -18,6 +18,8 @@ tags:
     description: Menu items (cibo + bevande) di una cantina
   - name: owners
     description: Proprietari di una cantina
+  - name: analytics
+    description: Analisi ricerche, click sui piatti e interazioni con le cantine
 
 paths:
   /v1/stands:
@@ -110,6 +112,48 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/StandSearchResult'
+
+  /v1/stands/analytics/interactions:
+    post:
+      tags: [ analytics ]
+      summary: Registra un click su un piatto o un'interazione con una cantina
+      operationId: recordInteraction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandInteractionCreate'
+      responses:
+        '204':
+          description: Interazione registrata con successo
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/analytics/summary:
+    get:
+      tags: [ analytics ]
+      summary: Riepilogo analitico delle ricerche effettuate e dei piatti/cantine più cliccati
+      operationId: getAnalyticsSummary
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Numero massimo di elementi per ciascuna classifica (default 10)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Statistiche aggregate su ricerche, piatti più richiesti e cantine più visitate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandAnalyticsSummary'
 
   /v1/stands/{id}:
     parameters:
@@ -547,6 +591,124 @@ components:
         score:
           type: integer
           description: Punteggio di rilevanza calcolato dall'algoritmo di ricerca
+
+    StandInteractionType:
+      type: string
+      enum:
+        - MENU_ITEM_CLICK
+        - STAND_FOOD_OPEN
+        - STAND_DRINK_OPEN
+        - STAND_DESCRIPTION_OPEN
+        - STAND_MAP_OPEN
+
+    StandInteractionCreate:
+      type: object
+      required: [ standId, interactionType ]
+      properties:
+        standId:
+          type: string
+          format: uuid
+          description: ID della cantina coinvolta nell'interazione
+        menuItemId:
+          type: string
+          format: uuid
+          description: ID del piatto o bevanda cliccato (se interactionType è MENU_ITEM_CLICK)
+        interactionType:
+          $ref: '#/components/schemas/StandInteractionType'
+        searchQuery:
+          type: string
+          maxLength: 200
+          description: Eventuale testo di ricerca attivo al momento del click
+
+    SearchQueryStat:
+      type: object
+      required: [ query, searchCount, avgResultsCount ]
+      properties:
+        query:
+          type: string
+          description: Termine o frase ricercata (normalizzata)
+        searchCount:
+          type: integer
+          format: int64
+          description: Numero totale di volte in cui è stata cercata
+        avgResultsCount:
+          type: number
+          format: double
+          description: Numero medio di cantine trovate per questa ricerca
+        lastSearchedAt:
+          type: string
+          format: date-time
+
+    MenuItemClickStat:
+      type: object
+      required: [ menuItemId, menuItemName, kind, standId, standNumber, standName, clickCount ]
+      properties:
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        clickCount:
+          type: integer
+          format: int64
+
+    StandClickStat:
+      type: object
+      required: [ standId, standNumber, standName, interactionCount ]
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        interactionCount:
+          type: integer
+          format: int64
+
+    StandAnalyticsSummary:
+      type: object
+      required:
+        - totalSearches
+        - totalInteractions
+        - topSearchedQueries
+        - zeroResultQueries
+        - topClickedMenuItems
+        - topClickedStands
+      properties:
+        totalSearches:
+          type: integer
+          format: int64
+        totalInteractions:
+          type: integer
+          format: int64
+        topSearchedQueries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchQueryStat'
+        zeroResultQueries:
+          type: array
+          description: Ricerche che non hanno prodotto risultati (piatti desiderati dagli utenti ma assenti)
+          items:
+            $ref: '#/components/schemas/SearchQueryStat'
+        topClickedMenuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemClickStat'
+        topClickedStands:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandClickStat'
 
     Problem:
       type: object
