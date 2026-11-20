@@ -1,6 +1,7 @@
 package com.ginogipsy.sanmartino.stands.api;
 
 import com.ginogipsy.sanmartino.stands.api.generated.model.*;
+import com.ginogipsy.sanmartino.stands.domain.FestivalReviewEntity;
 import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandOwnerEntity;
@@ -126,6 +127,28 @@ public class StandMapper {
         );
         if (stat.lastSearchedAt() != null) {
             dto.setLastSearchedAt(OffsetDateTime.ofInstant(stat.lastSearchedAt(), ZoneOffset.UTC));
+        }
+        return dto;
+    }
+
+    public FestivalReview toReview(FestivalReviewEntity entity) {
+        FestivalReview dto = new FestivalReview(
+                entity.getId(),
+                ReviewTargetType.valueOf(entity.getTargetType().name()),
+                entity.getTargetId(),
+                entity.getTargetName(),
+                entity.getAuthorUserId(),
+                entity.getAuthorUsername(),
+                entity.getRating(),
+                entity.getComment(),
+                ReviewStatus.valueOf(entity.getStatus().name()),
+                OffsetDateTime.ofInstant(entity.getCreatedAt(), ZoneOffset.UTC)
+        );
+        dto.setStandId(entity.getStandId());
+        dto.setModeratedBy(entity.getModeratedBy());
+        dto.setModerationNote(entity.getModerationNote());
+        if (entity.getModeratedAt() != null) {
+            dto.setModeratedAt(OffsetDateTime.ofInstant(entity.getModeratedAt(), ZoneOffset.UTC));
         }
         return dto;
     }

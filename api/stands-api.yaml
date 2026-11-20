@@ -20,6 +20,8 @@ tags:
     description: Proprietari di una cantina
   - name: analytics
     description: Analisi ricerche, click sui piatti e interazioni con le cantine
+  - name: reviews
+    description: Recensioni di utenti su cantine, piatti ed eventi con moderazione
 
 paths:
   /v1/stands:
@@ -154,6 +156,85 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/StandAnalyticsSummary'
+
+  /v1/stands/reviews:
+    get:
+      tags: [ reviews ]
+      summary: Elenca le recensioni filtrando per tipo target, ID target e stato di moderazione
+      operationId: listReviews
+      parameters:
+        - name: targetType
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReviewTargetType'
+        - name: targetId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+      responses:
+        '200':
+          description: Lista delle recensioni
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FestivalReview'
+    post:
+      tags: [ reviews ]
+      summary: Invia una nuova recensione (creata in stato PENDING per approvazione moderatore)
+      operationId: createReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FestivalReviewCreate'
+      responses:
+        '201':
+          description: Recensione inviata e messa in coda di moderazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FestivalReview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/stands/reviews/{reviewId}/moderation:
+    parameters:
+      - name: reviewId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ reviews ]
+      summary: Approva o rifiuta una recensione (riservato a Moderatori e Admin)
+      operationId: moderateReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FestivalReviewModeration'
+      responses:
+        '200':
+          description: Stato di moderazione aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FestivalReview'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/stands/{id}:
     parameters:
@@ -709,6 +790,107 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StandClickStat'
+
+    ReviewTargetType:
+      type: string
+      enum:
+        - STAND
+        - MENU_ITEM
+        - EVENT
+
+    ReviewStatus:
+      type: string
+      enum:
+        - PENDING
+        - APPROVED
+        - REJECTED
+
+    FestivalReview:
+      type: object
+      required:
+        - id
+        - targetType
+        - targetId
+        - targetName
+        - authorUserId
+        - authorUsername
+        - rating
+        - comment
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetType:
+          $ref: '#/components/schemas/ReviewTargetType'
+        targetId:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        targetName:
+          type: string
+        authorUserId:
+          type: string
+        authorUsername:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        moderatedBy:
+          type: string
+        moderationNote:
+          type: string
+        moderatedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    FestivalReviewCreate:
+      type: object
+      required: [ targetType, targetId, rating, comment ]
+      properties:
+        targetType:
+          $ref: '#/components/schemas/ReviewTargetType'
+        targetId:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        targetName:
+          type: string
+          maxLength: 200
+        authorUsername:
+          type: string
+          maxLength: 120
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 2
+          maxLength: 1000
+
+    FestivalReviewModeration:
+      type: object
+      required: [ status ]
+      properties:
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        moderationNote:
+          type: string
+          maxLength: 500
 
     Problem:
       type: object

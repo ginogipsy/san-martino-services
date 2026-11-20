@@ -4,7 +4,7 @@ Questo documento descrive l'architettura, l'algoritmo di scoring e la roadmap di
 
 ---
 
-## 1. Funzionalità Attualmente Implementate (`#052` & `#055`)
+## 1. Funzionalità Attualmente Implementate (`#052`, `#055` & `#057`)
 
 L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) esegue una ricerca cross-cantina combinando:
 
@@ -25,6 +25,8 @@ L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) 
    - **Bonus Disponibilità (`+15`)**: premia i piatti con porzioni disponibili (`availablePlates > 0`).
    - **Bonus Popolarità Click (`0..+25`)**: premia i piatti più cliccati dagli utenti (`MENU_ITEM_CLICK` con scala
      logaritmica $\min(25, \text{round}(\ln(1 + \text{clicks}) \times 6))$).
+   - **Bonus Recensioni Approvate (`-10..+20`)**: premia i piatti con voto medio approvato elevato
+     (`round((avgRating - 3.0) * 10)`).
    - **Bonus Vicinanza GPS (`0..+20`)**: formula di Haversine rispetto alle coordinate opzionali `lat`/`lng` dell'utente.
 6. **Tracciamento Analitico Ricerche & Click (`#055`)**:
     - **Log automatico ricerche (`stand_search_logs`)**: ogni ricerca con query normalizzata di almeno 2 caratteri viene
@@ -35,6 +37,11 @@ L'endpoint `GET /v1/stands/search` (`q`, `kind`, `onlyAvailable`, `lat`, `lng`) 
     - **Riepilogo per Dashboard (`GET /v1/stands/analytics/summary?limit=10`)**: restituisce `topSearchedQueries`,
       `zeroResultQueries` (piatti cercati dai visitatori ma assenti alla festa), `topClickedMenuItems` e
       `topClickedStands`.
+7. **Recensioni & Moderazione (`#057`)**:
+    - **Invio e consultazione recensioni (`GET/POST /v1/stands/reviews`)**: supporta recensioni su `STAND`, `MENU_ITEM`
+      ed `EVENT` (create in stato `PENDING`).
+    - **Flusso di approvazione Moderatori (`PUT /v1/stands/reviews/{reviewId}/moderation`)**: i Moderatori/Admin
+      approvano (`APPROVED`) o rifiutano (`REJECTED`) le recensioni prima della pubblicazione sull'app mobile.
 
 ---
 
@@ -45,8 +52,9 @@ Le seguenti ottimizzazioni richiedono i dati dei moduli successivi della roadmap
 - [x] **COMPLETATO (`#055` — Step 3 — Analytics & Popolarità di Ricerca)**:
     - Integrato nel calcolo dello `score` un peso di popolarità dinamico basato sui piatti più cliccati dagli utenti
       (`stand_interaction_events`) e persistenza automatica delle ricerche (`stand_search_logs`).
-- [ ] **TODO (Step 4 — Recensioni & Rating Medio)**:
-  - Aggiungere al ranking un boost proporzionale al voto medio approvato dai moderatori ($\text{Rating} \in [1..5]\star$) per il singolo piatto e per la cantina, così a parità di piatto (es. 3 cantine che cucinano le pizzelle) sale in cima quella più apprezzata.
+- [x] **COMPLETATO (`#057` — Step 4 — Recensioni & Rating Medio)**:
+    - Aggiunto al ranking un boost proporzionale al voto medio approvato dai moderatori ($\text{Rating} \in [1..5]
+      \star$) per i piatti recensiti (`festival_reviews`).
 - [ ] **TODO (Step 6 — Pulsantiera IoT & Tempo di Attesa Live)**:
   - Integrare il tempo di attesa stimato della cantina ($\text{Wait Time} = \text{Ordini in Coda} \times \text{Tempo Medio Preparazione}$) per penalizzare leggermente le cantine con code molto lunghe o mostrare un filtro *"Attesa breve (< 10 min)"*.
 - [ ] **TODO (Database Scaling — PostgreSQL `pg_trgm` + `unaccent` + `tsvector` GIN Index)**:

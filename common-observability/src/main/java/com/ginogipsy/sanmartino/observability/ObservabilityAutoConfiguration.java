@@ -1,11 +1,6 @@
 package com.ginogipsy.sanmartino.observability;
 
-import com.ginogipsy.sanmartino.observability.audit.AuditAspect;
-import com.ginogipsy.sanmartino.observability.audit.AuditPublisher;
-import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver;
-import com.ginogipsy.sanmartino.observability.audit.KafkaAuditPublisher;
-import com.ginogipsy.sanmartino.observability.audit.NoOpAuditPublisher;
-import com.ginogipsy.sanmartino.observability.audit.SecurityContextAuditUserResolver;
+import com.ginogipsy.sanmartino.observability.audit.*;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationInterceptor;
 import com.ginogipsy.sanmartino.observability.kafka.KafkaCorrelationRecordInterceptor;
 import io.micrometer.tracing.Tracer;
@@ -16,11 +11,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.autoconfigure.condition.*;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.kafka.autoconfigure.DefaultKafkaProducerFactoryCustomizer;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -178,11 +169,24 @@ public class ObservabilityAutoConfiguration {
             public DefaultKafkaProducerFactoryCustomizer kafkaCorrelationProducerFactoryCustomizer(
                     ObservabilityProperties properties) {
                 ObservabilityProperties.Correlation correlation = properties.correlation();
-                return producerFactory -> producerFactory.updateConfigs(Map.of(
-                        ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
-                        withCorrelationInterceptor(producerFactory.getConfigurationProperties()),
-                        KafkaCorrelationInterceptor.HEADER_NAME_CONFIG, correlation.headerName(),
-                        KafkaCorrelationInterceptor.MDC_KEY_CONFIG, correlation.mdcKey()));
+                return producerFactory -> {
+                    Map<String, Object> currentConfigs = producerFactory.getConfigurationProperties();
+                    java.util.HashMap<String, Object> updates = new java.util.HashMap<>();
+                    updates.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
+                            withCorrelationInterceptor(currentConfigs));
+                    updates.put(KafkaCorrelationInterceptor.HEADER_NAME_CONFIG, correlation.headerName());
+                    updates.put(KafkaCorrelationInterceptor.MDC_KEY_CONFIG, correlation.mdcKey());
+
+                    Object currentValueSerializer = currentConfigs.get(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
+                    if (currentValueSerializer == null
+                            || org.apache.kafka.common.serialization.StringSerializer.class.equals(currentValueSerializer)
+                            || org.apache.kafka.common.serialization.StringSerializer.class.getName()
+                            .equals(String.valueOf(currentValueSerializer))) {
+                        updates.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
+                                org.springframework.kafka.support.serializer.JacksonJsonSerializer.class);
+                    }
+                    producerFactory.updateConfigs(updates);
+                };
             }
 
             /**

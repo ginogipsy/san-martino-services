@@ -1,5 +1,7 @@
 package com.ginogipsy.sanmartino.stands.service;
 
+import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver;
+import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver.AuditUser;
 import com.ginogipsy.sanmartino.stands.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,7 +31,24 @@ class StandSearchServiceTest {
     @Mock
     private StandInteractionEventRepository interactionEventRepository;
 
+    @Mock
+    private FestivalReviewRepository reviewRepository;
+
+    @Mock
+    private AuditUserResolver auditUserResolver;
+
     private StandService service;
+
+    @BeforeEach
+    void setUp() {
+        service = new StandService(
+                repository,
+                searchLogRepository,
+                interactionEventRepository,
+                reviewRepository,
+                auditUserResolver
+        );
+    }
 
     private static StandEntity stand(int number, String name, String descIt, MenuItemEntity... items) {
         StandEntity s = new StandEntity(
@@ -259,11 +278,6 @@ class StandSearchServiceTest {
         assertThat(service.searchStands("primo", null, false)).hasSize(1);
     }
 
-    @BeforeEach
-    void setUp() {
-        service = new StandService(repository, searchLogRepository, interactionEventRepository);
-    }
-
     @Test
     void logsSearchQueriesAndBoostsMostClickedMenuItems() {
         MenuItemEntity amatriciana1 = new MenuItemEntity(
@@ -462,5 +476,90 @@ class StandSearchServiceTest {
         assertThat(summary.topClickedMenuItems().getFirst().clickCount()).isEqualTo(19L);
         assertThat(summary.topClickedStands()).hasSize(1);
         assertThat(summary.topClickedStands().getFirst().standName()).isEqualTo("Il Tartufo del Tobia");
+    }
+
+    @Test
+    void createsPendingReviewsModeratesThemAndBoostsApprovedHighRatedDishes() {
+        MenuItemEntity pizzella1 = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Pizzella fritta",
+                "Pizzella classica",
+                "Classic fried dough",
+                40,
+                MenuKind.FOOD,
+                List.of("pizzelle")
+        );
+        MenuItemEntity pizzella2 = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Pizzella fritta",
+                "Pizzella classica",
+                "Classic fried dough",
+                40,
+                MenuKind.FOOD,
+                List.of("pizzelle")
+        );
+
+        StandEntity cantina1 = stand(1, "Cantina Uno", "Pizzelle", pizzella1);
+        StandEntity cantina2 = stand(2, "Cantina Due", "Pizzelle", pizzella2);
+
+        when(repository.findById(cantina2.getId())).thenReturn(Optional.of(cantina2));
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("user-123", "francesco"));
+        when(reviewRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        // 1. Invio recensione da utente autenticato -> stato iniziale PENDING
+        FestivalReviewEntity created = service.createReview(
+                ReviewTargetType.MENU_ITEM,
+                pizzella2.getId(),
+                cantina2.getId(),
+                null,
+                null,
+                5,
+                "Pizzella buonissima, calda e croccante!"
+        );
+
+        assertThat(created.getStatus()).isEqualTo(ReviewStatus.PENDING);
+        assertThat(created.getAuthorUsername()).isEqualTo("francesco");
+        assertThat(created.getTargetName()).contains("Pizzella fritta").contains("Cantina Due");
+        assertThat(created.getRating()).isEqualTo(5);
+
+        // 2. Moderazione della recensione -> APPROVED
+        when(reviewRepository.findById(created.getId())).thenReturn(Optional.of(created));
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("mod-1", "moderatore_arce"));
+
+        FestivalReviewEntity moderated = service.moderateReview(
+                created.getId(),
+                ReviewStatus.APPROVED,
+                "Recensione verificata e conforme"
+        );
+
+        assertThat(moderated.getStatus()).isEqualTo(ReviewStatus.APPROVED);
+        assertThat(moderated.getModeratedBy()).isEqualTo("moderatore_arce");
+        assertThat(moderated.getModeratedAt()).isNotNull();
+
+        // 3. Il rating medio approvato (5.0 stelle) assegna un boost (+20 punti) al piatto di Cantina Due
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(cantina1, cantina2));
+        when(reviewRepository.findApprovedMenuItemRatings()).thenReturn(List.of(
+                new FestivalReviewRepository.TargetRatingAggregation() {
+                    @Override
+                    public UUID getTargetId() {
+                        return pizzella2.getId();
+                    }
+
+                    @Override
+                    public double getAvgRating() {
+                        return 5.0;
+                    }
+
+                    @Override
+                    public long getReviewCount() {
+                        return 4L;
+                    }
+                }
+        ));
+
+        List<StandService.StandSearchHit> hits = service.searchStands("pizzella", MenuKind.FOOD, false);
+        assertThat(hits).hasSize(2);
+        assertThat(hits.get(0).stand().getName()).isEqualTo("Cantina Due");
+        assertThat(hits.get(0).score()).isGreaterThan(hits.get(1).score());
     }
 }

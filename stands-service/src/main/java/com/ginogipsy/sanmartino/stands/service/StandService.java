@@ -1,5 +1,7 @@
 package com.ginogipsy.sanmartino.stands.service;
 
+import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver;
+import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver.AuditUser;
 import com.ginogipsy.sanmartino.observability.audit.Auditable;
 import com.ginogipsy.sanmartino.stands.domain.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,20 +21,34 @@ public class StandService {
     private final StandRepository repository;
     private final StandSearchLogRepository searchLogRepository;
     private final StandInteractionEventRepository interactionEventRepository;
+    private final FestivalReviewRepository reviewRepository;
+    private final AuditUserResolver auditUserResolver;
 
     public StandService(StandRepository repository) {
-        this(repository, null, null);
+        this(repository, null, null, null, null);
+    }
+
+    public StandService(
+            StandRepository repository,
+            StandSearchLogRepository searchLogRepository,
+            StandInteractionEventRepository interactionEventRepository
+    ) {
+        this(repository, searchLogRepository, interactionEventRepository, null, null);
     }
 
     @Autowired
     public StandService(
             StandRepository repository,
             StandSearchLogRepository searchLogRepository,
-            StandInteractionEventRepository interactionEventRepository
+            StandInteractionEventRepository interactionEventRepository,
+            FestivalReviewRepository reviewRepository,
+            AuditUserResolver auditUserResolver
     ) {
         this.repository = repository;
         this.searchLogRepository = searchLogRepository;
         this.interactionEventRepository = interactionEventRepository;
+        this.reviewRepository = reviewRepository;
+        this.auditUserResolver = auditUserResolver;
     }
 
     @Transactional(readOnly = true)
@@ -186,6 +202,17 @@ public class StandService {
         return Math.min(25, Math.max(2, logBonus));
     }
 
+    /**
+     * Calcola un bonus di qualità (-10..+20 punti) basato sulla media dei voti approvati (1..5 stelle)
+     * del piatto (TODO Step 4 del motore di ricerca).
+     */
+    static int computeRatingBonus(Double avgRating) {
+        if (avgRating == null || avgRating <= 0.0) {
+            return 0;
+        }
+        return (int) Math.round((avgRating - 3.0) * 10.0);
+    }
+
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
@@ -202,7 +229,8 @@ public class StandService {
      * - normalizzazione accenti e rimozione stopword
      * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
      * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
-     * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto) e vicinanza GPS opzionale.
+     * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto),
+     *   rating medio approvato (`festival_reviews`) e vicinanza GPS opzionale.
      * - salvataggio automatico della ricerca in `stand_search_logs` se la query normalizzata ha lunghezza >= 2.
      */
     @Transactional
@@ -218,6 +246,7 @@ public class StandService {
         String fullNormalizedQuery = normalizeText(query);
 
         Map<UUID, Long> itemClickCounts = loadMenuItemClickCounts();
+        Map<UUID, Double> itemApprovedRatings = loadApprovedMenuItemRatings();
 
         List<StandSearchHit> results = new java.util.ArrayList<>();
 
@@ -250,7 +279,10 @@ public class StandService {
                 if (itemScore > 0) {
                     long clicks = item.getId() != null ? itemClickCounts.getOrDefault(item.getId(), 0L) : 0L;
                     int popularityBonus = computePopularityBonus(clicks);
-                    matchedScoredItems.add(new ScoredItem(item, itemScore + popularityBonus));
+                    int ratingBonus = item.getId() != null
+                            ? computeRatingBonus(itemApprovedRatings.get(item.getId()))
+                            : 0;
+                    matchedScoredItems.add(new ScoredItem(item, Math.max(1, itemScore + popularityBonus + ratingBonus)));
                 }
             }
 
@@ -475,6 +507,142 @@ public class StandService {
                         StandInteractionEventRepository.MenuItemClickAggregation::getClickCount,
                         Long::sum
                 ));
+    }
+
+    private Map<UUID, Double> loadApprovedMenuItemRatings() {
+        if (reviewRepository == null) {
+            return Map.of();
+        }
+        return reviewRepository.findApprovedMenuItemRatings().stream()
+                .filter(agg -> agg.getTargetId() != null)
+                .collect(Collectors.toMap(
+                        FestivalReviewRepository.TargetRatingAggregation::getTargetId,
+                        FestivalReviewRepository.TargetRatingAggregation::getAvgRating,
+                        (a, b) -> a
+                ));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FestivalReviewEntity> listReviews(
+            ReviewTargetType targetType,
+            UUID targetId,
+            ReviewStatus status
+    ) {
+        if (reviewRepository == null) {
+            return List.of();
+        }
+        return reviewRepository.findFiltered(targetType, targetId, status);
+    }
+
+    @Transactional
+    @Auditable(
+            action = "STAND:REVIEW_CREATE",
+            description = "'Invio recensione (' + #targetType + ') voto ' + #rating + '/5 su ' + #targetId",
+            resourceId = "#result?.id?.toString()"
+    )
+    public FestivalReviewEntity createReview(
+            ReviewTargetType targetType,
+            UUID targetId,
+            UUID standId,
+            String explicitTargetName,
+            String explicitAuthorUsername,
+            int rating,
+            String comment
+    ) {
+        AuditUser currentUser = auditUserResolver != null ? auditUserResolver.resolveUser() : AuditUser.ANONYMOUS;
+        String authorUserId = currentUser != null && currentUser.userId() != null
+                ? currentUser.userId()
+                : "anonymous";
+        String authorUsername = (currentUser != null
+                && currentUser.username() != null
+                && !"anonymous".equalsIgnoreCase(currentUser.username()))
+                ? currentUser.username()
+                : (explicitAuthorUsername != null && !explicitAuthorUsername.isBlank()
+                ? explicitAuthorUsername.trim()
+                : "Visitatore");
+
+        UUID resolvedStandId = standId;
+        String resolvedTargetName = explicitTargetName != null && !explicitTargetName.isBlank()
+                ? explicitTargetName.trim()
+                : null;
+
+        if (targetType == ReviewTargetType.STAND) {
+            StandEntity stand = findById(targetId);
+            resolvedStandId = stand.getId();
+            resolvedTargetName = "#" + stand.getNumber() + " — " + stand.getName();
+        } else if (targetType == ReviewTargetType.MENU_ITEM) {
+            if (resolvedStandId != null) {
+                final UUID standIdToLookup = resolvedStandId;
+                StandEntity stand = findById(standIdToLookup);
+                MenuItemEntity item = stand.getMenuItems().stream()
+                        .filter(it -> it.getId().equals(targetId))
+                        .findFirst()
+                        .orElseThrow(() -> new MenuItemNotFoundException(standIdToLookup, targetId));
+                resolvedTargetName = item.getName() + " (#" + stand.getNumber() + " " + stand.getName() + ")";
+            } else if (resolvedTargetName == null) {
+                for (StandEntity stand : repository.findAllByOrderByNumberAsc()) {
+                    for (MenuItemEntity item : stand.getMenuItems()) {
+                        if (targetId.equals(item.getId())) {
+                            resolvedStandId = stand.getId();
+                            resolvedTargetName = item.getName() + " (#" + stand.getNumber() + " " + stand.getName() + ")";
+                            break;
+                        }
+                    }
+                    if (resolvedTargetName != null) break;
+                }
+            }
+        }
+
+        if (resolvedTargetName == null || resolvedTargetName.isBlank()) {
+            resolvedTargetName = targetType.name() + " " + targetId;
+        }
+
+        int safeRating = Math.max(1, Math.min(5, rating));
+        FestivalReviewEntity review = new FestivalReviewEntity(
+                UUID.randomUUID(),
+                targetType,
+                targetId,
+                resolvedStandId,
+                truncate(resolvedTargetName, 200),
+                truncate(authorUserId, 100),
+                truncate(authorUsername, 120),
+                safeRating,
+                comment.trim(),
+                ReviewStatus.PENDING,
+                Instant.now()
+        );
+        return reviewRepository != null ? reviewRepository.save(review) : review;
+    }
+
+    @Transactional
+    @Auditable(
+            action = "STAND:REVIEW_MODERATE",
+            description = "'Moderazione recensione ' + #reviewId + ' -> ' + #newStatus",
+            resourceId = "#reviewId?.toString()"
+    )
+    public FestivalReviewEntity moderateReview(
+            UUID reviewId,
+            ReviewStatus newStatus,
+            String moderationNote
+    ) {
+        if (reviewRepository == null) {
+            throw new ReviewNotFoundException(reviewId);
+        }
+        FestivalReviewEntity review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ReviewNotFoundException(reviewId));
+
+        AuditUser moderator = auditUserResolver != null ? auditUserResolver.resolveUser() : AuditUser.ANONYMOUS;
+        String moderatorName = moderator != null && moderator.username() != null
+                ? moderator.username()
+                : "moderator";
+
+        review.setStatus(newStatus);
+        review.setModeratedBy(truncate(moderatorName, 120));
+        review.setModerationNote(moderationNote != null && !moderationNote.isBlank() ? moderationNote.trim() : null);
+        Instant now = Instant.now();
+        review.setModeratedAt(now);
+        review.setUpdatedAt(now);
+        return reviewRepository.save(review);
     }
 
     public record SearchQueryStatView(String query, long searchCount, double avgResultsCount, Instant lastSearchedAt) {
