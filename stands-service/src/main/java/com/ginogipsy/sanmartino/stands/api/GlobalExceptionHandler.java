@@ -2,6 +2,7 @@ package com.ginogipsy.sanmartino.stands.api;
 
 import com.ginogipsy.sanmartino.stands.service.MenuItemNotFoundException;
 import com.ginogipsy.sanmartino.stands.service.OwnerNotFoundException;
+import com.ginogipsy.sanmartino.stands.service.ReviewNotFoundException;
 import com.ginogipsy.sanmartino.stands.service.StandNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -29,6 +30,13 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleOwnerNotFound(OwnerNotFoundException ex) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
         problem.setTitle("Owner not found");
+        return problem;
+    }
+
+    @ExceptionHandler(ReviewNotFoundException.class)
+    public ProblemDetail handleReviewNotFound(ReviewNotFoundException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setTitle("Review not found");
         return problem;
     }
 }

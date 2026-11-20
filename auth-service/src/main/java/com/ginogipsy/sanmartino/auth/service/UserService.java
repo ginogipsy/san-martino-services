@@ -71,32 +71,58 @@ public class UserService {
     }
 
     public void registerUser(String username, String email, String password) {
-        // 1. Configura i dati base dell'utente
+        registerUser(username, email, password, null, null);
+    }
+
+    public void registerUser(
+            String username,
+            String email,
+            String password,
+            String firstName,
+            String lastName
+    ) {
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("Username obbligatorio");
+        }
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Email obbligatoria");
+        }
+        if (password == null || password.length() < 6) {
+            throw new IllegalArgumentException("La password deve contenere almeno 6 caratteri");
+        }
+
+        // 1. Configura i dati base dell'utente (attivo subito per il login da app mobile)
         UserRepresentation user = new UserRepresentation();
+        String cleanUsername = username.trim();
         user.setEnabled(true);
-        user.setUsername(username);
-        user.setEmail(email);
-        user.setEmailVerified(false); // Inizialmente false
+        user.setUsername(cleanUsername);
+        user.setEmail(email.trim());
+        user.setEmailVerified(true);
+        user.setFirstName(firstName != null && !firstName.isBlank() ? firstName.trim() : cleanUsername);
+        user.setLastName(lastName != null && !lastName.isBlank() ? lastName.trim() : cleanUsername);
+        user.setRequiredActions(Collections.emptyList());
 
-        // 2. Imposta le azioni richieste (es. verifica email)
-        user.setRequiredActions(List.of("VERIFY_EMAIL"));
-
-        // 3. Imposta la password
+        // 2. Imposta la password non temporanea
         user.setCredentials(List.of(createPasswordCredentials(password)));
 
-        // 4. Chiamata a Keycloak
+        // 3. Chiamata a Keycloak
         Response response = keycloak.realm(realm).users().create(user);
 
         if (response.getStatus() == 201) {
-            // Recuperiamo l'ID dell'utente appena creato dal path della response
             String userId = CreatedResponseUtil.getCreatedId(response);
-
-            // OPZIONALE: Invia l'email di verifica immediatamente
-            keycloak.realm(realm).users().get(userId).sendVerifyEmail();
-
-            System.out.println("Utente creato con ID: " + userId);
+            try {
+                assignRoleToUser(userId, "USER");
+            } catch (Exception _) {
+                // Il ruolo USER potrebbe non essere preconfigurato sul realm locale
+            }
+        } else if (response.getStatus() == 409) {
+            throw new IllegalArgumentException("Username o email già registrati");
+        } else if (response.getStatus() == 400) {
+            throw new IllegalArgumentException("Dati di registrazione non validi: controlla email e password");
+        } else if (response.getStatus() == 401 || response.getStatus() == 403) {
+            throw new RuntimeException("Servizio di registrazione temporaneamente non autorizzato (permessi Keycloak mancanti)");
         } else {
-            throw new RuntimeException("Errore Keycloak: " + response.getStatusInfo().getReasonPhrase());
+            throw new RuntimeException("Impossibile completare la registrazione in questo momento. Riprova più tardi.");
         }
     }
 
