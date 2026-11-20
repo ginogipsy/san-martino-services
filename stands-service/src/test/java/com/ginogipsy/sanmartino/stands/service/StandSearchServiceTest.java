@@ -1,20 +1,21 @@
 package com.ginogipsy.sanmartino.stands.service;
 
-import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
-import com.ginogipsy.sanmartino.stands.domain.MenuKind;
-import com.ginogipsy.sanmartino.stands.domain.StandEntity;
-import com.ginogipsy.sanmartino.stands.domain.StandRepository;
+import com.ginogipsy.sanmartino.stands.domain.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class StandSearchServiceTest {
@@ -22,11 +23,32 @@ class StandSearchServiceTest {
     @Mock
     private StandRepository repository;
 
+    @Mock
+    private StandSearchLogRepository searchLogRepository;
+
+    @Mock
+    private StandInteractionEventRepository interactionEventRepository;
+
     private StandService service;
 
-    @BeforeEach
-    void setUp() {
-        service = new StandService(repository);
+    private static StandEntity stand(int number, String name, String descIt, MenuItemEntity... items) {
+        StandEntity s = new StandEntity(
+                UUID.randomUUID(),
+                number,
+                name,
+                descIt,
+                descIt,
+                2018,
+                41.5822,
+                13.5775
+        );
+        for (MenuItemEntity item : items) {
+            if (item.getId() == null) {
+                item.setId(UUID.randomUUID());
+            }
+            s.addMenuItem(item);
+        }
+        return s;
     }
 
     @Test
@@ -237,21 +259,208 @@ class StandSearchServiceTest {
         assertThat(service.searchStands("primo", null, false)).hasSize(1);
     }
 
-    private static StandEntity stand(int number, String name, String descIt, MenuItemEntity... items) {
-        StandEntity s = new StandEntity(
+    @BeforeEach
+    void setUp() {
+        service = new StandService(repository, searchLogRepository, interactionEventRepository);
+    }
+
+    @Test
+    void logsSearchQueriesAndBoostsMostClickedMenuItems() {
+        MenuItemEntity amatriciana1 = new MenuItemEntity(
                 UUID.randomUUID(),
-                number,
-                name,
-                descIt,
-                descIt,
-                2018,
-                41.5822,
-                13.5775
+                "Amatriciana",
+                "Bucatini",
+                "Bucatini",
+                30,
+                MenuKind.FOOD,
+                List.of("pasta")
         );
-        for (MenuItemEntity item : items) {
-            item.setId(UUID.randomUUID());
-            s.addMenuItem(item);
-        }
-        return s;
+        MenuItemEntity amatriciana2 = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Amatriciana",
+                "Bucatini",
+                "Bucatini",
+                30,
+                MenuKind.FOOD,
+                List.of("pasta")
+        );
+
+        StandEntity cantina1 = stand(1, "Cantina Uno", "Cucina", amatriciana1);
+        StandEntity cantina2 = stand(2, "Cantina Due", "Cucina", amatriciana2);
+
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(cantina1, cantina2));
+
+        // Simula 40 click sul piatto della Cantina Due
+        StandInteractionEventRepository.MenuItemClickAggregation clickAgg =
+                new StandInteractionEventRepository.MenuItemClickAggregation() {
+                    @Override
+                    public UUID getMenuItemId() {
+                        return amatriciana2.getId();
+                    }
+
+                    @Override
+                    public long getClickCount() {
+                        return 40L;
+                    }
+                };
+        when(interactionEventRepository.findAllMenuItemClickCounts()).thenReturn(List.of(clickAgg));
+
+        List<StandService.StandSearchHit> hits = service.searchStands("  Amatriciana! ", MenuKind.FOOD, true);
+
+        // Grazie al popularity boost, Cantina Due precede Cantina Uno a parità di testo e disponibilità
+        assertThat(hits).hasSize(2);
+        assertThat(hits.get(0).stand().getName()).isEqualTo("Cantina Due");
+        assertThat(hits.get(0).score()).isGreaterThan(hits.get(1).score());
+
+        // Verifica che la ricerca sia stata salvata in stand_search_logs
+        ArgumentCaptor<StandSearchLogEntity> logCaptor = ArgumentCaptor.forClass(StandSearchLogEntity.class);
+        verify(searchLogRepository).save(logCaptor.capture());
+        StandSearchLogEntity savedLog = logCaptor.getValue();
+        assertThat(savedLog.getRawQuery()).isEqualTo("Amatriciana!");
+        assertThat(savedLog.getNormalizedQuery()).isEqualTo("amatriciana");
+        assertThat(savedLog.getKindFilter()).isEqualTo(MenuKind.FOOD);
+        assertThat(savedLog.isOnlyAvailable()).isTrue();
+        assertThat(savedLog.getResultsCount()).isEqualTo(2);
+    }
+
+    @Test
+    void doesNotLogBlankOrSingleCharacterQueriesAndRecordsInteractions() {
+        MenuItemEntity piatto = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Polenta",
+                "Polenta",
+                "Polenta",
+                10,
+                MenuKind.FOOD,
+                List.of("polenta")
+        );
+        StandEntity cantina = stand(4, "La Polenteria", "Polenta", piatto);
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(cantina));
+        when(repository.findById(cantina.getId())).thenReturn(Optional.of(cantina));
+
+        service.searchStands("a", null, false);
+        verify(searchLogRepository, never()).save(any());
+
+        service.recordInteraction(
+                cantina.getId(),
+                piatto.getId(),
+                StandInteractionType.MENU_ITEM_CLICK,
+                "Polenta calda"
+        );
+
+        ArgumentCaptor<StandInteractionEventEntity> eventCaptor =
+                ArgumentCaptor.forClass(StandInteractionEventEntity.class);
+        verify(interactionEventRepository).save(eventCaptor.capture());
+        StandInteractionEventEntity savedEvent = eventCaptor.getValue();
+        assertThat(savedEvent.getStandId()).isEqualTo(cantina.getId());
+        assertThat(savedEvent.getMenuItemId()).isEqualTo(piatto.getId());
+        assertThat(savedEvent.getInteractionType()).isEqualTo(StandInteractionType.MENU_ITEM_CLICK);
+        assertThat(savedEvent.getSearchQuery()).isEqualTo("polenta calda");
+    }
+
+    @Test
+    void aggregatesAnalyticsSummaryWithTopSearchesZeroResultsAndTopClickedDishes() {
+        MenuItemEntity piatto = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Sagnozzi al tartufo",
+                "Pasta fresca al tartufo",
+                "Fresh pasta with truffle",
+                25,
+                MenuKind.FOOD,
+                List.of("pasta", "tartufo")
+        );
+        StandEntity cantina = stand(7, "Il Tartufo del Tobia", "Specialità tartufo", piatto);
+
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(cantina));
+        when(searchLogRepository.count()).thenReturn(15L);
+        when(interactionEventRepository.count()).thenReturn(28L);
+
+        Instant now = Instant.now();
+        when(searchLogRepository.findTopSearchedQueries(any())).thenReturn(List.of(
+                new StandSearchLogRepository.SearchQueryAggregation() {
+                    @Override
+                    public String getQuery() {
+                        return "pasta";
+                    }
+
+                    @Override
+                    public long getSearchCount() {
+                        return 10L;
+                    }
+
+                    @Override
+                    public double getAvgResultsCount() {
+                        return 3.4;
+                    }
+
+                    @Override
+                    public Instant getLastSearchedAt() {
+                        return now;
+                    }
+                }
+        ));
+        when(searchLogRepository.findTopZeroResultQueries(any())).thenReturn(List.of(
+                new StandSearchLogRepository.SearchQueryAggregation() {
+                    @Override
+                    public String getQuery() {
+                        return "sushi";
+                    }
+
+                    @Override
+                    public long getSearchCount() {
+                        return 5L;
+                    }
+
+                    @Override
+                    public double getAvgResultsCount() {
+                        return 0.0;
+                    }
+
+                    @Override
+                    public Instant getLastSearchedAt() {
+                        return now;
+                    }
+                }
+        ));
+        when(interactionEventRepository.findTopClickedMenuItems(any())).thenReturn(List.of(
+                new StandInteractionEventRepository.MenuItemClickAggregation() {
+                    @Override
+                    public UUID getMenuItemId() {
+                        return piatto.getId();
+                    }
+
+                    @Override
+                    public long getClickCount() {
+                        return 19L;
+                    }
+                }
+        ));
+        when(interactionEventRepository.findTopClickedStands(any())).thenReturn(List.of(
+                new StandInteractionEventRepository.StandClickAggregation() {
+                    @Override
+                    public UUID getStandId() {
+                        return cantina.getId();
+                    }
+
+                    @Override
+                    public long getInteractionCount() {
+                        return 28L;
+                    }
+                }
+        ));
+
+        StandService.AnalyticsSummaryView summary = service.getAnalyticsSummary(10);
+
+        assertThat(summary.totalSearches()).isEqualTo(15L);
+        assertThat(summary.totalInteractions()).isEqualTo(28L);
+        assertThat(summary.topSearchedQueries()).hasSize(1);
+        assertThat(summary.topSearchedQueries().getFirst().query()).isEqualTo("pasta");
+        assertThat(summary.zeroResultQueries()).hasSize(1);
+        assertThat(summary.zeroResultQueries().getFirst().query()).isEqualTo("sushi");
+        assertThat(summary.topClickedMenuItems()).hasSize(1);
+        assertThat(summary.topClickedMenuItems().getFirst().menuItemName()).isEqualTo("Sagnozzi al tartufo");
+        assertThat(summary.topClickedMenuItems().getFirst().clickCount()).isEqualTo(19L);
+        assertThat(summary.topClickedStands()).hasSize(1);
+        assertThat(summary.topClickedStands().getFirst().standName()).isEqualTo("Il Tartufo del Tobia");
     }
 }

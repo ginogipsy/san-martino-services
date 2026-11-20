@@ -1,24 +1,38 @@
 package com.ginogipsy.sanmartino.stands.service;
 
 import com.ginogipsy.sanmartino.observability.audit.Auditable;
-import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
-import com.ginogipsy.sanmartino.stands.domain.MenuKind;
-import com.ginogipsy.sanmartino.stands.domain.StandEntity;
-import com.ginogipsy.sanmartino.stands.domain.StandOwnerEntity;
-import com.ginogipsy.sanmartino.stands.domain.StandRepository;
+import com.ginogipsy.sanmartino.stands.domain.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class StandService {
 
     private final StandRepository repository;
+    private final StandSearchLogRepository searchLogRepository;
+    private final StandInteractionEventRepository interactionEventRepository;
 
     public StandService(StandRepository repository) {
+        this(repository, null, null);
+    }
+
+    @Autowired
+    public StandService(
+            StandRepository repository,
+            StandSearchLogRepository searchLogRepository,
+            StandInteractionEventRepository interactionEventRepository
+    ) {
         this.repository = repository;
+        this.searchLogRepository = searchLogRepository;
+        this.interactionEventRepository = interactionEventRepository;
     }
 
     @Transactional(readOnly = true)
@@ -160,6 +174,112 @@ public class StandService {
 
     public record StandSearchHit(StandEntity stand, List<MenuItemEntity> matchedItems, int score) {}
 
+    /**
+     * Calcola un bonus di popolarità (0..25 punti) basato sui click ricevuti dal piatto,
+     * utile per ordinare a parità di rilevanza testuale i piatti più richiesti della festa.
+     */
+    static int computePopularityBonus(long clickCount) {
+        if (clickCount <= 0) {
+            return 0;
+        }
+        int logBonus = (int) Math.round(Math.log1p(clickCount) * 6.0);
+        return Math.min(25, Math.max(2, logBonus));
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return null;
+        return s.length() <= maxLen ? s : s.substring(0, maxLen);
+    }
+
+    @Transactional
+    public List<StandSearchHit> searchStands(String query, MenuKind kindFilter, boolean onlyAvailable) {
+        return searchStands(query, kindFilter, onlyAvailable, null, null);
+    }
+
+    /**
+     * Ricerca intelligente cross-cantina su piatti, parole chiave (`keywords`),
+     * descrizioni IT/EN e anagrafica cantina, con:
+     * - normalizzazione accenti e rimozione stopword
+     * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
+     * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
+     * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto) e vicinanza GPS opzionale.
+     * - salvataggio automatico della ricerca in `stand_search_logs` se la query normalizzata ha lunghezza >= 2.
+     */
+    @Transactional
+    public List<StandSearchHit> searchStands(
+            String query,
+            MenuKind kindFilter,
+            boolean onlyAvailable,
+            Double userLat,
+            Double userLng
+    ) {
+        List<StandEntity> allStands = repository.findAllByOrderByNumberAsc();
+        List<String> tokens = tokenizeQuery(query);
+        String fullNormalizedQuery = normalizeText(query);
+
+        Map<UUID, Long> itemClickCounts = loadMenuItemClickCounts();
+
+        List<StandSearchHit> results = new java.util.ArrayList<>();
+
+        for (StandEntity stand : allStands) {
+            List<MenuItemEntity> menuItems = stand.getMenuItems();
+            menuItems.forEach(item -> item.getKeywords().size());
+
+            if (tokens.isEmpty()) {
+                List<MenuItemEntity> filteredItems = menuItems.stream()
+                        .filter(item -> matchesFilters(item, kindFilter, onlyAvailable))
+                        .toList();
+                if ((kindFilter != null || onlyAvailable) && filteredItems.isEmpty()) {
+                    continue;
+                }
+                int gpsScore = computeProximityBonus(stand, userLat, userLng);
+                results.add(new StandSearchHit(stand, filteredItems, gpsScore));
+                continue;
+            }
+
+            int standLevelScore = scoreStandMetadata(stand, fullNormalizedQuery, tokens);
+
+            record ScoredItem(MenuItemEntity item, int score) {}
+            List<ScoredItem> matchedScoredItems = new java.util.ArrayList<>();
+
+            for (MenuItemEntity item : menuItems) {
+                if (!matchesFilters(item, kindFilter, onlyAvailable)) {
+                    continue;
+                }
+                int itemScore = scoreMenuItem(item, fullNormalizedQuery, tokens);
+                if (itemScore > 0) {
+                    long clicks = item.getId() != null ? itemClickCounts.getOrDefault(item.getId(), 0L) : 0L;
+                    int popularityBonus = computePopularityBonus(clicks);
+                    matchedScoredItems.add(new ScoredItem(item, itemScore + popularityBonus));
+                }
+            }
+
+            matchedScoredItems.sort(java.util.Comparator.comparingInt(ScoredItem::score).reversed());
+
+            if (!matchedScoredItems.isEmpty() || (standLevelScore > 0 && kindFilter == null && !onlyAvailable)) {
+                int proximityBonus = computeProximityBonus(stand, userLat, userLng);
+                int totalScore = standLevelScore
+                        + matchedScoredItems.stream().mapToInt(ScoredItem::score).sum()
+                        + proximityBonus;
+                List<MenuItemEntity> matchedItems = matchedScoredItems.stream()
+                        .map(ScoredItem::item)
+                        .toList();
+                results.add(new StandSearchHit(stand, matchedItems, totalScore));
+            }
+        }
+
+        if (!tokens.isEmpty() || (userLat != null && userLng != null)) {
+            results.sort(
+                    java.util.Comparator.comparingInt(StandSearchHit::score).reversed()
+                            .thenComparingInt(hit -> hit.stand().getNumber())
+            );
+        }
+
+        recordSearchIfEligible(query, fullNormalizedQuery, kindFilter, onlyAvailable, results.size());
+
+        return results;
+    }
+
     private static final java.util.Set<String> STOP_WORDS = java.util.Set.of(
             "il", "lo", "la", "i", "gli", "le", "un", "uno", "una",
             "di", "a", "da", "in", "con", "su", "per", "tra", "fra",
@@ -196,85 +316,192 @@ public class StandService {
             java.util.Map.entry("dolce", java.util.Set.of("dolci", "dessert", "ciambella", "crostata", "torta", "biscotti", "nutella", "cioccolato"))
     );
 
-    public List<StandSearchHit> searchStands(String query, MenuKind kindFilter, boolean onlyAvailable) {
-        return searchStands(query, kindFilter, onlyAvailable, null, null);
+    @Transactional
+    public void recordInteraction(
+            UUID standId,
+            UUID menuItemId,
+            StandInteractionType interactionType,
+            String searchQuery
+    ) {
+        StandEntity stand = repository.findById(standId)
+                .orElseThrow(() -> new StandNotFoundException(standId));
+
+        if (menuItemId != null) {
+            boolean belongsToStand = stand.getMenuItems().stream()
+                    .anyMatch(item -> menuItemId.equals(item.getId()));
+            if (!belongsToStand) {
+                throw new MenuItemNotFoundException(standId, menuItemId);
+            }
+        }
+
+        if (interactionEventRepository != null) {
+            String normalizedSearch = searchQuery == null || searchQuery.isBlank()
+                    ? null
+                    : truncate(normalizeText(searchQuery), 200);
+            StandInteractionEventEntity event = new StandInteractionEventEntity(
+                    UUID.randomUUID(),
+                    standId,
+                    menuItemId,
+                    interactionType,
+                    normalizedSearch,
+                    Instant.now()
+            );
+            interactionEventRepository.save(event);
+        }
     }
 
-    /**
-     * Ricerca intelligente cross-cantina su piatti, parole chiave (`keywords`),
-     * descrizioni IT/EN e anagrafica cantina, con:
-     * - normalizzazione accenti e rimozione stopword
-     * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
-     * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
-     * - boost di disponibilità (`availablePlates > 0`) e vicinanza GPS opzionale (`userLat`, `userLng`).
-     */
     @Transactional(readOnly = true)
-    public List<StandSearchHit> searchStands(
-            String query,
+    public AnalyticsSummaryView getAnalyticsSummary(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 100));
+        PageRequest page = PageRequest.of(0, safeLimit);
+
+        long totalSearches = searchLogRepository != null ? searchLogRepository.count() : 0L;
+        long totalInteractions = interactionEventRepository != null ? interactionEventRepository.count() : 0L;
+
+        List<SearchQueryStatView> topSearches = searchLogRepository == null
+                ? List.of()
+                : searchLogRepository.findTopSearchedQueries(page).stream()
+                .map(agg -> new SearchQueryStatView(
+                        agg.getQuery(),
+                        agg.getSearchCount(),
+                        Math.round(agg.getAvgResultsCount() * 10.0) / 10.0,
+                        agg.getLastSearchedAt()
+                ))
+                .toList();
+
+        List<SearchQueryStatView> zeroResultQueries = searchLogRepository == null
+                ? List.of()
+                : searchLogRepository.findTopZeroResultQueries(page).stream()
+                .map(agg -> new SearchQueryStatView(
+                        agg.getQuery(),
+                        agg.getSearchCount(),
+                        0.0,
+                        agg.getLastSearchedAt()
+                ))
+                .toList();
+
+        List<StandEntity> allStands = repository.findAllByOrderByNumberAsc();
+        Map<UUID, StandEntity> standsById = allStands.stream()
+                .filter(s -> s.getId() != null)
+                .collect(Collectors.toMap(StandEntity::getId, s -> s, (a, b) -> a));
+
+        Map<UUID, MenuItemEntity> itemsById = new java.util.HashMap<>();
+        for (StandEntity stand : allStands) {
+            for (MenuItemEntity item : stand.getMenuItems()) {
+                if (item.getId() != null) {
+                    itemsById.put(item.getId(), item);
+                }
+            }
+        }
+
+        List<MenuItemClickStatView> topClickedMenuItems = interactionEventRepository == null
+                ? List.of()
+                : interactionEventRepository.findTopClickedMenuItems(page).stream()
+                .map(agg -> {
+                    MenuItemEntity item = itemsById.get(agg.getMenuItemId());
+                    if (item == null || item.getStand() == null) return null;
+                    StandEntity stand = item.getStand();
+                    return new MenuItemClickStatView(
+                            item.getId(),
+                            item.getName(),
+                            item.getKind(),
+                            stand.getId(),
+                            stand.getNumber(),
+                            stand.getName(),
+                            agg.getClickCount()
+                    );
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        List<StandClickStatView> topClickedStands = interactionEventRepository == null
+                ? List.of()
+                : interactionEventRepository.findTopClickedStands(page).stream()
+                .map(agg -> {
+                    StandEntity stand = standsById.get(agg.getStandId());
+                    if (stand == null) return null;
+                    return new StandClickStatView(
+                            stand.getId(),
+                            stand.getNumber(),
+                            stand.getName(),
+                            agg.getInteractionCount()
+                    );
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
+
+        return new AnalyticsSummaryView(
+                totalSearches,
+                totalInteractions,
+                topSearches,
+                zeroResultQueries,
+                topClickedMenuItems,
+                topClickedStands
+        );
+    }
+
+    private void recordSearchIfEligible(
+            String rawQuery,
+            String normalizedQuery,
             MenuKind kindFilter,
             boolean onlyAvailable,
-            Double userLat,
-            Double userLng
+            int resultsCount
     ) {
-        List<StandEntity> allStands = repository.findAllByOrderByNumberAsc();
-        List<String> tokens = tokenizeQuery(query);
-        String fullNormalizedQuery = normalizeText(query);
-
-        List<StandSearchHit> results = new java.util.ArrayList<>();
-
-        for (StandEntity stand : allStands) {
-            List<MenuItemEntity> menuItems = stand.getMenuItems();
-            menuItems.forEach(item -> item.getKeywords().size());
-
-            if (tokens.isEmpty()) {
-                List<MenuItemEntity> filteredItems = menuItems.stream()
-                        .filter(item -> matchesFilters(item, kindFilter, onlyAvailable))
-                        .toList();
-                if ((kindFilter != null || onlyAvailable) && filteredItems.isEmpty()) {
-                    continue;
-                }
-                int gpsScore = computeProximityBonus(stand, userLat, userLng);
-                results.add(new StandSearchHit(stand, filteredItems, gpsScore));
-                continue;
-            }
-
-            int standLevelScore = scoreStandMetadata(stand, fullNormalizedQuery, tokens);
-
-            record ScoredItem(MenuItemEntity item, int score) {}
-            List<ScoredItem> matchedScoredItems = new java.util.ArrayList<>();
-
-            for (MenuItemEntity item : menuItems) {
-                if (!matchesFilters(item, kindFilter, onlyAvailable)) {
-                    continue;
-                }
-                int itemScore = scoreMenuItem(item, fullNormalizedQuery, tokens);
-                if (itemScore > 0) {
-                    matchedScoredItems.add(new ScoredItem(item, itemScore));
-                }
-            }
-
-            matchedScoredItems.sort(java.util.Comparator.comparingInt(ScoredItem::score).reversed());
-
-            if (!matchedScoredItems.isEmpty() || (standLevelScore > 0 && kindFilter == null && !onlyAvailable)) {
-                int proximityBonus = computeProximityBonus(stand, userLat, userLng);
-                int totalScore = standLevelScore
-                        + matchedScoredItems.stream().mapToInt(ScoredItem::score).sum()
-                        + proximityBonus;
-                List<MenuItemEntity> matchedItems = matchedScoredItems.stream()
-                        .map(ScoredItem::item)
-                        .toList();
-                results.add(new StandSearchHit(stand, matchedItems, totalScore));
-            }
+        if (searchLogRepository == null || normalizedQuery == null || normalizedQuery.length() < 2) {
+            return;
         }
+        String cleanRaw = truncate(rawQuery != null ? rawQuery.trim() : normalizedQuery, 200);
+        String cleanNorm = truncate(normalizedQuery, 200);
+        StandSearchLogEntity logEntity = new StandSearchLogEntity(
+                UUID.randomUUID(),
+                cleanRaw,
+                cleanNorm,
+                kindFilter,
+                onlyAvailable,
+                resultsCount,
+                Instant.now()
+        );
+        searchLogRepository.save(logEntity);
+    }
 
-        if (!tokens.isEmpty() || (userLat != null && userLng != null)) {
-            results.sort(
-                    java.util.Comparator.comparingInt(StandSearchHit::score).reversed()
-                            .thenComparingInt(hit -> hit.stand().getNumber())
-            );
+    private Map<UUID, Long> loadMenuItemClickCounts() {
+        if (interactionEventRepository == null) {
+            return Map.of();
         }
+        return interactionEventRepository.findAllMenuItemClickCounts().stream()
+                .filter(agg -> agg.getMenuItemId() != null)
+                .collect(Collectors.toMap(
+                        StandInteractionEventRepository.MenuItemClickAggregation::getMenuItemId,
+                        StandInteractionEventRepository.MenuItemClickAggregation::getClickCount,
+                        Long::sum
+                ));
+    }
 
-        return results;
+    public record SearchQueryStatView(String query, long searchCount, double avgResultsCount, Instant lastSearchedAt) {
+    }
+
+    public record MenuItemClickStatView(
+            UUID menuItemId,
+            String menuItemName,
+            MenuKind kind,
+            UUID standId,
+            int standNumber,
+            String standName,
+            long clickCount
+    ) {
+    }
+
+    public record StandClickStatView(UUID standId, int standNumber, String standName, long interactionCount) {
+    }
+
+    public record AnalyticsSummaryView(
+            long totalSearches,
+            long totalInteractions,
+            List<SearchQueryStatView> topSearchedQueries,
+            List<SearchQueryStatView> zeroResultQueries,
+            List<MenuItemClickStatView> topClickedMenuItems,
+            List<StandClickStatView> topClickedStands
+    ) {
     }
 
     private static boolean matchesFilters(MenuItemEntity item, MenuKind kindFilter, boolean onlyAvailable) {
