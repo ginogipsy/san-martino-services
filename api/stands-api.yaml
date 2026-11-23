@@ -24,6 +24,8 @@ tags:
     description: Recensioni di utenti su cantine, piatti ed eventi con moderazione
   - name: favorites
     description: Cantine preferite ("Dove voglio andare") salvate dagli utenti autenticati
+  - name: keypad
+    description: Pulsantiera IoT 10 Slot (3x ESP32 Cassa/Cucina/Consegna), Coda Ordini e Permessi Operatori per Cantina
 
 paths:
   /v1/stands:
@@ -465,6 +467,302 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/stands/keypad/accessible:
+    get:
+      tags: [ keypad ]
+      summary: Elenca le cantine accessibili dall'utente corrente sulla Pulsantiera/Ordini con i relativi permessi di postazione
+      operationId: listAccessibleKeypadStands
+      responses:
+        '200':
+          description: Lista delle cantine su cui l'utente ha almeno un ruolo (OWNER, CASHIER, KITCHEN, DELIVERY, VIEWER)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessibleKeypadStand'
+
+  /v1/stands/{id}/keypad/state:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    get:
+      tags: [ keypad ]
+      summary: Stato live della pulsantiera a 10 slot, display 7 segmenti e coda ordini della cantina
+      operationId: getStandKeypadState
+      parameters:
+        - name: station
+          in: query
+          required: false
+          description: Postazione che effettua il polling (per telemetria heartbeat ESP32/Web)
+          schema:
+            $ref: '#/components/schemas/KeypadStationRole'
+        - name: X-Device-Token
+          in: header
+          required: false
+          description: Token hardware opzionale per autenticazione diretta delle 3 schede ESP32 della cantina
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stato completo della pulsantiera, dei 10 slot LED/pulsanti, dei display e della coda ordini
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/slots:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    put:
+      tags: [ keypad ]
+      summary: Configura l'associazione dei 10 slot fisici (1..10) ai piatti/bevande del menu (richiede OWNER o ADMIN)
+      operationId: updateStandKeypadSlots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotsUpdate'
+      responses:
+        '200':
+          description: Configurazione slot aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/permissions:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Assegna un permesso di postazione (CASHIER, KITCHEN, DELIVERY, VIEWER, OWNER) a un utente per questa cantina
+      operationId: addStandStaffPermission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandStaffPermissionCreate'
+      responses:
+        '200':
+          description: Permesso aggiunto e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/permissions/{permissionId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: permissionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [ keypad ]
+      summary: Revoca un permesso di postazione precedentemente assegnato a un utente sulla cantina
+      operationId: deleteStandStaffPermission
+      responses:
+        '200':
+          description: Permesso revocato e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CASSA (Web o ESP32 #1) — Conferma un nuovo ordine decrementando le porzioni e accodandolo per Cucina e Consegna
+      operationId: createStandKeypadOrder
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadOrderCreate'
+      responses:
+        '201':
+          description: Ordine creato con numero progressivo assegnato e stato pulsantiera aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/kitchen/press:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CUCINA (Web o ESP32 #2) — Segna 1 porzione pronta per lo slot premuto sull'ordine più vecchio in attesa
+      operationId: pressKitchenKeypadSlot
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotPress'
+      responses:
+        '200':
+          description: Porzione segnata come pronta in cucina e stato LED aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/delivery/press:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CONSEGNA (Web o ESP32 #3) — Segna 1 porzione servita per lo slot premuto sull'ordine corrente in uscita e avanza automaticamente al prossimo ordine quando tutti i piatti sono stati consegnati
+      operationId: pressDeliveryKeypadSlot
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotPress'
+      responses:
+        '200':
+          description: Porzione consegnata; se l'ordine corrente è completo, passa automaticamente al numero d'ordine successivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/reset-counter:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Azzera la coda attiva e riporta il contatore progressivo ordini a #1 (inizio nuova serata/turno, richiede OWNER o ADMIN)
+      operationId: resetStandKeypadCounter
+      responses:
+        '200':
+          description: Contatore ordini riportato a 1 e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [ keypad ]
+      summary: Annulla un singolo ordine attivo in coda e ripristina automaticamente le porzioni disponibili nel menu (richiede CASHIER o OWNER)
+      operationId: cancelStandKeypadOrder
+      responses:
+        '200':
+          description: Ordine annullato, porzioni ripristinate e stato pulsantiera aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/{orderId}/complete:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [ keypad ]
+      summary: Forza il completamento immediato (DELIVERED) di un singolo ordine in coda (richiede DELIVERY o OWNER)
+      operationId: completeStandKeypadOrder
+      responses:
+        '200':
+          description: Ordine segnato come completamente consegnato e avanzamento coda aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     StandId:
@@ -522,6 +820,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        activeOrdersCount:
+          type: integer
+          description: Numero di ordini attualmente in coda nella pulsantiera della cantina
+        currentServingOrderNumber:
+          type: integer
+          description: Numero dell'ordine attualmente in preparazione/consegna al bancone (0 se coda vuota)
+        estimatedWaitMinutes:
+          type: integer
+          description: Stima indicativa dei minuti di attesa in base alla coda ordini attiva
 
     StandDetail:
       allOf:
@@ -935,6 +1242,349 @@ components:
           type: string
           maxLength: 500
 
+    KeypadStationRole:
+      type: string
+      enum:
+        - CASHIER
+        - KITCHEN
+        - DELIVERY
+
+    StandStaffRole:
+      type: string
+      enum:
+        - OWNER
+        - CASHIER
+        - KITCHEN
+        - DELIVERY
+        - VIEWER
+
+    DeliveryLedState:
+      type: string
+      enum:
+        - 'OFF'
+        - 'BLINKING'
+        - 'SOLID'
+
+    StandOrderStatus:
+      type: string
+      enum:
+        - IN_PROGRESS
+        - READY
+        - DELIVERED
+        - CANCELLED
+
+    AccessibleKeypadStand:
+      type: object
+      required:
+        - standId
+        - standNumber
+        - standName
+        - permissions
+        - activeOrdersCount
+        - currentServingOrderNumber
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffRole'
+        activeOrdersCount:
+          type: integer
+        currentServingOrderNumber:
+          type: integer
+
+    StandKeypadSlotView:
+      type: object
+      required:
+        - slotNumber
+        - availablePlates
+        - pendingToCookCount
+        - currentDeliveryOrderRequiredCount
+        - currentDeliveryOrderCookedCount
+        - currentDeliveryOrderDeliveredCount
+        - kitchenLedOn
+        - deliveryLedState
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        availablePlates:
+          type: integer
+        pendingToCookCount:
+          type: integer
+          description: Porzioni totali da cucinare in tutta la coda per questo slot
+        currentDeliveryOrderRequiredCount:
+          type: integer
+          description: Porzioni richieste di questo slot nell'ordine corrente in uscita al bancone
+        currentDeliveryOrderCookedCount:
+          type: integer
+          description: Porzioni già pronte dalla cucina per questo slot nell'ordine corrente in uscita
+        currentDeliveryOrderDeliveredCount:
+          type: integer
+          description: Porzioni già messe sul vassoio dal consegnatore per questo slot nell'ordine corrente
+        kitchenLedOn:
+          type: boolean
+          description: LED Cucina acceso se pendingToCookCount > 0
+        deliveryLedState:
+          $ref: '#/components/schemas/DeliveryLedState'
+
+    StandOrderItemView:
+      type: object
+      required:
+        - id
+        - slotNumber
+        - menuItemName
+        - kind
+        - orderedQuantity
+        - cookedQuantity
+        - deliveredQuantity
+      properties:
+        id:
+          type: string
+          format: uuid
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        orderedQuantity:
+          type: integer
+        cookedQuantity:
+          type: integer
+        deliveredQuantity:
+          type: integer
+
+    StandOrderView:
+      type: object
+      required:
+        - id
+        - standId
+        - orderNumber
+        - status
+        - createdAt
+        - items
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        orderNumber:
+          type: integer
+        status:
+          $ref: '#/components/schemas/StandOrderStatus'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        readyAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderItemView'
+
+    StandStaffPermissionView:
+      type: object
+      required:
+        - id
+        - standId
+        - username
+        - permission
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        permission:
+          $ref: '#/components/schemas/StandStaffRole'
+        grantedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    StandKeypadState:
+      type: object
+      required:
+        - standId
+        - standNumber
+        - standName
+        - nextOrderNumber
+        - lastIssuedOrderNumber
+        - oldestKitchenOrderNumber
+        - currentDeliveryOrderNumber
+        - lastDeliveredOrderNumber
+        - activeOrdersCount
+        - totalPendingKitchenPortions
+        - userPermissions
+        - slots
+        - activeOrders
+        - recentDeliveredOrders
+        - staffPermissions
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        deviceToken:
+          type: string
+          description: Token hardware per le 3 ESP32 (visibile solo a OWNER o ADMIN)
+        nextOrderNumber:
+          type: integer
+        lastIssuedOrderNumber:
+          type: integer
+          description: Display TM1637 Cassa — Ultimo numero d'ordine emesso (0 se nessuno)
+        oldestKitchenOrderNumber:
+          type: integer
+          description: Display 1 TM1637 Cucina — Numero ordine più vecchio con piatti da cucinare (0 se nessuno)
+        currentDeliveryOrderNumber:
+          type: integer
+          description: Display 1 TM1637 Consegna — Numero dell'ordine corrente da comporre e servire (0 se coda vuota)
+        lastDeliveredOrderNumber:
+          type: integer
+          description: Display 2 TM1637 Consegna — Ultimo ordine completato e consegnato
+        activeOrdersCount:
+          type: integer
+        totalPendingKitchenPortions:
+          type: integer
+          description: Display 2 TM1637 Cucina — Totale piatti caldi ancora da preparare in coda
+        lastCashierSeenAt:
+          type: string
+          format: date-time
+        lastKitchenSeenAt:
+          type: string
+          format: date-time
+        lastDeliverySeenAt:
+          type: string
+          format: date-time
+        userPermissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffRole'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandKeypadSlotView'
+        activeOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderView'
+        recentDeliveredOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderView'
+        staffPermissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffPermissionView'
+
+    StandKeypadSlotAssignment:
+      type: object
+      required: [ slotNumber ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+
+    StandKeypadSlotsUpdate:
+      type: object
+      required: [ slots ]
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandKeypadSlotAssignment'
+        regenerateDeviceToken:
+          type: boolean
+          default: false
+
+    StandStaffPermissionCreate:
+      type: object
+      required: [ username, permission ]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 120
+        permission:
+          $ref: '#/components/schemas/StandStaffRole'
+
+    StandKeypadOrderItemInput:
+      type: object
+      required: [ slotNumber, quantity ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 50
+
+    StandKeypadOrderCreate:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/StandKeypadOrderItemInput'
+
+    StandKeypadSlotPress:
+      type: object
+      required: [ slotNumber ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 1
+
     Problem:
       type: object
       properties:
@@ -959,6 +1609,12 @@ components:
             $ref: '#/components/schemas/Problem'
     BadRequest:
       description: Richiesta non valida
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Permessi insufficienti per operare su questa postazione o cantina
       content:
         application/problem+json:
           schema:

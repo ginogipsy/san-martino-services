@@ -1,12 +1,7 @@
 package com.ginogipsy.sanmartino.stands.api;
 
 import com.ginogipsy.sanmartino.stands.api.generated.StandsApi;
-import com.ginogipsy.sanmartino.stands.api.generated.model.MenuKind;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandCreate;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandDetail;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandSearchResult;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandSummary;
-import com.ginogipsy.sanmartino.stands.api.generated.model.StandUpdate;
+import com.ginogipsy.sanmartino.stands.api.generated.model.*;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
 import com.ginogipsy.sanmartino.stands.service.StandService;
 import org.springframework.http.HttpStatus;
@@ -22,15 +17,31 @@ public class StandsController implements StandsApi {
 
     private final StandService service;
     private final StandMapper mapper;
+    private final com.ginogipsy.sanmartino.stands.service.StandKeypadService keypadService;
 
-    public StandsController(StandService service, StandMapper mapper) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public StandsController(
+            StandService service,
+            StandMapper mapper,
+            com.ginogipsy.sanmartino.stands.service.StandKeypadService keypadService
+    ) {
         this.service = service;
         this.mapper = mapper;
+        this.keypadService = keypadService;
     }
 
     @Override
     public ResponseEntity<List<StandSummary>> listStands() {
-        return ResponseEntity.ok(service.findAll().stream().map(mapper::toSummary).toList());
+        java.util.Map<UUID, com.ginogipsy.sanmartino.stands.service.StandKeypadService.StandQueueSnapshot> snapshots =
+                keypadService != null ? keypadService.loadQueueSnapshotsByStandId() : java.util.Map.of();
+        return ResponseEntity.ok(
+                service.findAll().stream()
+                        .map(s -> mapper.toSummary(
+                                s,
+                                snapshots.getOrDefault(s.getId(), com.ginogipsy.sanmartino.stands.service.StandKeypadService.StandQueueSnapshot.EMPTY)
+                        ))
+                        .toList()
+        );
     }
 
     @Override

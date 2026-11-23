@@ -21,6 +21,10 @@
         "description": "Moderatore recensioni"
       },
       {
+        "name": "ROLE_STAND_OWNER",
+        "description": "Proprietario di cantina"
+      },
+      {
         "name": "USER",
         "description": "Utente app mobile"
       }
@@ -56,6 +60,97 @@
           "view-realm"
         ]
       }
+    },
+    {
+      "username": "francesco-grossi",
+      "email": "francesco.grossi@sanmartino.local",
+      "firstName": "Francesco",
+      "lastName": "Grossi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER",
+        "ROLE_STAND_OWNER"
+      ]
+    },
+    {
+      "username": "maria-chiara",
+      "email": "maria.chiara@sanmartino.local",
+      "firstName": "Maria Chiara",
+      "lastName": "Rossi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "cuoco-mario",
+      "email": "cuoco.mario@sanmartino.local",
+      "firstName": "Mario",
+      "lastName": "Bianchi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "scricci",
+      "email": "scricci@sanmartino.local",
+      "firstName": "Scricci",
+      "lastName": "Verdi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "lisa-la",
+      "email": "lisa.la@sanmartino.local",
+      "firstName": "Lisa",
+      "lastName": "La",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
     }
   ],
   "components": {

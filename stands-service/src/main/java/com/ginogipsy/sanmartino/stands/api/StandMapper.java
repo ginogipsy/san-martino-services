@@ -5,16 +5,32 @@ import com.ginogipsy.sanmartino.stands.domain.FestivalReviewEntity;
 import com.ginogipsy.sanmartino.stands.domain.MenuItemEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandEntity;
 import com.ginogipsy.sanmartino.stands.domain.StandOwnerEntity;
+import com.ginogipsy.sanmartino.stands.service.StandKeypadService;
 import com.ginogipsy.sanmartino.stands.service.StandService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 @Component
 public class StandMapper {
+
+    private final StandKeypadService keypadService;
+
+    public StandMapper() {
+        this(null);
+    }
+
+    @Autowired
+    public StandMapper(StandKeypadService keypadService) {
+        this.keypadService = keypadService;
+    }
 
     public StandEntity fromCreate(StandCreate dto) {
         return new StandEntity(
@@ -42,7 +58,16 @@ public class StandMapper {
         );
     }
 
+    private static OffsetDateTime toOffsetDateTime(Instant instant) {
+        return instant != null ? OffsetDateTime.ofInstant(instant, ZoneOffset.UTC) : null;
+    }
+
     public StandSummary toSummary(StandEntity entity) {
+        StandKeypadService.StandQueueSnapshot snap = resolveQueueSnapshot(entity.getId());
+        return toSummary(entity, snap);
+    }
+
+    public StandSummary toSummary(StandEntity entity, StandKeypadService.StandQueueSnapshot snap) {
         StandSummary dto = new StandSummary(
                 entity.getId(),
                 entity.getNumber(),
@@ -52,6 +77,11 @@ public class StandMapper {
                 entity.getLatitude(),
                 entity.getLongitude()
         );
+        if (snap != null) {
+            dto.setActiveOrdersCount(snap.activeOrdersCount());
+            dto.setCurrentServingOrderNumber(snap.currentServingOrderNumber());
+            dto.setEstimatedWaitMinutes(snap.estimatedWaitMinutes());
+        }
         applyAuditing(entity, dto::setCreatedAt, dto::setUpdatedAt);
         return dto;
     }
@@ -70,7 +100,138 @@ public class StandMapper {
                 owners,
                 items
         );
+        StandKeypadService.StandQueueSnapshot snap = resolveQueueSnapshot(entity.getId());
+        if (snap != null) {
+            dto.setActiveOrdersCount(snap.activeOrdersCount());
+            dto.setCurrentServingOrderNumber(snap.currentServingOrderNumber());
+            dto.setEstimatedWaitMinutes(snap.estimatedWaitMinutes());
+        }
         applyAuditing(entity, dto::setCreatedAt, dto::setUpdatedAt);
+        return dto;
+    }
+
+    private StandKeypadService.StandQueueSnapshot resolveQueueSnapshot(UUID standId) {
+        if (keypadService == null || standId == null) {
+            return StandKeypadService.StandQueueSnapshot.EMPTY;
+        }
+        Map<UUID, StandKeypadService.StandQueueSnapshot> map = keypadService.loadQueueSnapshotsByStandId();
+        return map.getOrDefault(standId, StandKeypadService.StandQueueSnapshot.EMPTY);
+    }
+
+    public AccessibleKeypadStand toAccessibleKeypadStand(StandKeypadService.AccessibleStandView view) {
+        List<StandStaffRole> roles = view.permissions().stream()
+                .map(r -> StandStaffRole.valueOf(r.name()))
+                .toList();
+        return new AccessibleKeypadStand(
+                view.standId(),
+                view.standNumber(),
+                view.standName(),
+                roles,
+                view.activeOrdersCount(),
+                view.currentServingOrderNumber()
+        );
+    }
+
+    public StandKeypadState toStandKeypadState(StandKeypadService.KeypadStateView view) {
+        List<StandStaffRole> userPermissions = view.userPermissions().stream()
+                .map(r -> StandStaffRole.valueOf(r.name()))
+                .toList();
+
+        List<StandKeypadSlotView> slots = view.slots().stream()
+                .map(s -> {
+                    StandKeypadSlotView slotDto = new StandKeypadSlotView(
+                            s.slotNumber(),
+                            s.availablePlates(),
+                            s.pendingToCookCount(),
+                            s.currentDeliveryOrderRequiredCount(),
+                            s.currentDeliveryOrderCookedCount(),
+                            s.currentDeliveryOrderDeliveredCount(),
+                            s.kitchenLedOn(),
+                            DeliveryLedState.valueOf(s.deliveryLedState().name())
+                    );
+                    slotDto.setMenuItemId(s.menuItemId());
+                    slotDto.setMenuItemName(s.menuItemName());
+                    if (s.kind() != null) {
+                        slotDto.setKind(MenuKind.valueOf(s.kind().name()));
+                    }
+                    return slotDto;
+                })
+                .toList();
+
+        List<StandOrderView> activeOrders = view.activeOrders().stream()
+                .map(this::toStandOrderView)
+                .toList();
+
+        List<StandOrderView> recentDeliveredOrders = view.recentDeliveredOrders().stream()
+                .map(this::toStandOrderView)
+                .toList();
+
+        List<StandStaffPermissionView> staffPermissions = view.staffPermissions().stream()
+                .map(p -> {
+                    StandStaffPermissionView permDto = new StandStaffPermissionView(
+                            p.id(),
+                            p.standId(),
+                            p.username(),
+                            StandStaffRole.valueOf(p.permission().name()),
+                            toOffsetDateTime(p.createdAt())
+                    );
+                    permDto.setGrantedBy(p.grantedBy());
+                    return permDto;
+                })
+                .toList();
+
+        StandKeypadState dto = new StandKeypadState(
+                view.standId(),
+                view.standNumber(),
+                view.standName(),
+                view.nextOrderNumber(),
+                view.lastIssuedOrderNumber(),
+                view.oldestKitchenOrderNumber(),
+                view.currentDeliveryOrderNumber(),
+                view.lastDeliveredOrderNumber(),
+                view.activeOrdersCount(),
+                view.totalPendingKitchenPortions(),
+                userPermissions,
+                slots,
+                activeOrders,
+                recentDeliveredOrders,
+                staffPermissions
+        );
+        dto.setDeviceToken(view.deviceToken());
+        dto.setLastCashierSeenAt(toOffsetDateTime(view.lastCashierSeenAt()));
+        dto.setLastKitchenSeenAt(toOffsetDateTime(view.lastKitchenSeenAt()));
+        dto.setLastDeliverySeenAt(toOffsetDateTime(view.lastDeliverySeenAt()));
+        return dto;
+    }
+
+    private StandOrderView toStandOrderView(StandKeypadService.OrderView o) {
+        List<StandOrderItemView> items = o.items().stream()
+                .map(it -> {
+                    StandOrderItemView itemDto = new StandOrderItemView(
+                            it.id(),
+                            it.slotNumber(),
+                            it.menuItemName(),
+                            MenuKind.valueOf(it.kind().name()),
+                            it.orderedQuantity(),
+                            it.cookedQuantity(),
+                            it.deliveredQuantity()
+                    );
+                    itemDto.setMenuItemId(it.menuItemId());
+                    return itemDto;
+                })
+                .toList();
+
+        StandOrderView dto = new StandOrderView(
+                o.id(),
+                o.standId(),
+                o.orderNumber(),
+                StandOrderStatus.valueOf(o.status().name()),
+                toOffsetDateTime(o.createdAt()),
+                items
+        );
+        dto.setCreatedBy(o.createdBy());
+        dto.setReadyAt(toOffsetDateTime(o.readyAt()));
+        dto.setDeliveredAt(toOffsetDateTime(o.deliveredAt()));
         return dto;
     }
 
@@ -226,3 +387,4 @@ public class StandMapper {
         }
     }
 }
+

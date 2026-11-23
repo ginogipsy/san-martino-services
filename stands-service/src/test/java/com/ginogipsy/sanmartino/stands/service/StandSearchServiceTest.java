@@ -592,4 +592,246 @@ class StandSearchServiceTest {
         service.removeFavoriteStand(standId);
         verify(favoriteStandRepository).deleteByUserIdAndStandId("user-42", standId);
     }
+
+    @Test
+    void manages10SlotKeypadOrdersKitchenDeliveryLedsAndGranularStaffPermissions() {
+        StandKeypadConfigRepository configRepo = mock(StandKeypadConfigRepository.class);
+        StandKeypadSlotRepository slotRepo = mock(StandKeypadSlotRepository.class);
+        StandStaffPermissionRepository permRepo = mock(StandStaffPermissionRepository.class);
+        StandOrderRepository orderRepo = mock(StandOrderRepository.class);
+
+        StandKeypadService keypadService = new StandKeypadService(
+                repository,
+                configRepo,
+                slotRepo,
+                permRepo,
+                orderRepo,
+                auditUserResolver
+        );
+
+        MenuItemEntity piatto1 = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Sagnozzi al Tartufo",
+                "Primo piatto",
+                "First course",
+                20,
+                MenuKind.FOOD,
+                List.of("pasta")
+        );
+        MenuItemEntity piatto2 = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Arrosticini",
+                "Secondo piatto",
+                "Main course",
+                30,
+                MenuKind.FOOD,
+                List.of("carne")
+        );
+        MenuItemEntity vino = new MenuItemEntity(
+                UUID.randomUUID(),
+                "Calice Cesanese",
+                "Vino rosso",
+                "Red wine",
+                50,
+                MenuKind.DRINK,
+                List.of("vino")
+        );
+
+        StandEntity ginoCantina = stand(12, "Gino Cantina", "Cantina storica", piatto1, piatto2, vino);
+        ginoCantina.addOwner(new StandOwnerEntity(
+                UUID.randomUUID(),
+                "Francesco",
+                "Grossi",
+                "francesco-grossi@sanmartino.it",
+                null,
+                OwnerRole.PRIMARY
+        ));
+
+        when(repository.findById(ginoCantina.getId())).thenReturn(Optional.of(ginoCantina));
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(ginoCantina));
+
+        java.util.concurrent.atomic.AtomicReference<StandKeypadConfigEntity> savedConfig =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        when(configRepo.findById(ginoCantina.getId())).thenAnswer(inv -> Optional.ofNullable(savedConfig.get()));
+        when(configRepo.save(any())).thenAnswer(inv -> {
+            StandKeypadConfigEntity c = inv.getArgument(0);
+            savedConfig.set(c);
+            return c;
+        });
+
+        List<StandKeypadSlotEntity> storedSlots = new java.util.ArrayList<>();
+        when(slotRepo.findAllByStandIdOrderBySlotNumberAsc(ginoCantina.getId()))
+                .thenAnswer(inv -> storedSlots.stream()
+                        .sorted(java.util.Comparator.comparingInt(StandKeypadSlotEntity::getSlotNumber))
+                        .toList());
+        when(slotRepo.save(any())).thenAnswer(inv -> {
+            StandKeypadSlotEntity s = inv.getArgument(0);
+            storedSlots.removeIf(existing -> existing.getSlotNumber() == s.getSlotNumber());
+            storedSlots.add(s);
+            return s;
+        });
+
+        List<StandStaffPermissionEntity> storedPerms = new java.util.ArrayList<>();
+        when(permRepo.findAllByStandIdOrderByUsernameAscPermissionAsc(ginoCantina.getId()))
+                .thenAnswer(inv -> List.copyOf(storedPerms));
+        when(permRepo.findByStandIdAndUsernameIgnoreCaseAndPermission(any(), any(), any()))
+                .thenAnswer(inv -> {
+                    String u = inv.getArgument(1);
+                    StandStaffRole r = inv.getArgument(2);
+                    return storedPerms.stream()
+                            .filter(p -> p.getUsername().equalsIgnoreCase(u) && p.getPermission() == r)
+                            .findFirst();
+                });
+        when(permRepo.save(any())).thenAnswer(inv -> {
+            StandStaffPermissionEntity p = inv.getArgument(0);
+            storedPerms.add(p);
+            return p;
+        });
+
+        List<StandOrderEntity> storedOrders = new java.util.ArrayList<>();
+        when(orderRepo.findAllByStandIdAndStatusInOrderByOrderNumberAsc(eq(ginoCantina.getId()), any()))
+                .thenAnswer(inv -> {
+                    java.util.Collection<StandOrderStatus> statuses = inv.getArgument(1);
+                    return storedOrders.stream()
+                            .filter(o -> statuses.contains(o.getStatus()))
+                            .sorted(java.util.Comparator.comparingInt(StandOrderEntity::getOrderNumber))
+                            .toList();
+                });
+        when(orderRepo.findTop10ByStandIdAndStatusOrderByOrderNumberDesc(eq(ginoCantina.getId()), eq(StandOrderStatus.DELIVERED)))
+                .thenAnswer(inv -> storedOrders.stream()
+                        .filter(o -> o.getStatus() == StandOrderStatus.DELIVERED)
+                        .sorted(java.util.Comparator.comparingInt(StandOrderEntity::getOrderNumber).reversed())
+                        .limit(10)
+                        .toList());
+        when(orderRepo.save(any())).thenAnswer(inv -> {
+            StandOrderEntity o = inv.getArgument(0);
+            storedOrders.removeIf(existing -> existing.getId().equals(o.getId()));
+            storedOrders.add(o);
+            return o;
+        });
+
+        // 1. Francesco Grossi (Stand Owner di gino-cantina) configura i 10 slot e assegna i ruoli:
+        //    - maria-chiara -> CASHIER (cassa)
+        //    - scricci      -> DELIVERY (consegna)
+        //    - lisa-la      -> VIEWER (lettura ordini)
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("u-owner", "francesco-grossi"));
+
+        StandKeypadService.KeypadStateView initial = keypadService.updateSlots(
+                ginoCantina.getId(),
+                List.of(
+                        new StandKeypadService.SlotAssignmentInput(1, piatto1.getId()),
+                        new StandKeypadService.SlotAssignmentInput(2, piatto2.getId()),
+                        new StandKeypadService.SlotAssignmentInput(7, vino.getId())
+                ),
+                false
+        );
+        assertThat(initial.slots()).hasSize(10);
+        assertThat(initial.userPermissions()).contains(StandStaffRole.OWNER, StandStaffRole.CASHIER, StandStaffRole.KITCHEN, StandStaffRole.DELIVERY);
+
+        keypadService.addStaffPermission(ginoCantina.getId(), "maria-chiara", StandStaffRole.CASHIER);
+        keypadService.addStaffPermission(ginoCantina.getId(), "scricci", StandStaffRole.DELIVERY);
+        keypadService.addStaffPermission(ginoCantina.getId(), "lisa-la", StandStaffRole.VIEWER);
+
+        // 2. Lisa-la (VIEWER) può leggere lo stato degli ordini di gino-cantina ma NON può inserire ordini in cassa
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("u-lisa", "lisa-la"));
+        assertThat(keypadService.listAccessibleStands()).hasSize(1);
+        StandKeypadService.KeypadStateView lisaView = keypadService.getKeypadState(ginoCantina.getId(), null, null);
+        assertThat(lisaView.userPermissions()).containsExactly(StandStaffRole.VIEWER);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                keypadService.createOrder(ginoCantina.getId(), List.of(new StandKeypadService.OrderItemInput(1, 1)), null)
+        ).isInstanceOf(StandAccessDeniedException.class);
+
+        // 3. Maria-Chiara (CASHIER) inserisce Ordine #1: Piatto 1 + Piatto 1 + Vino (Slot 1 x2, Slot 7 x1)
+        //    e subito dopo Ordine #2: 1x Piatto 2 (Slot 2 x1)
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("u-maria", "maria-chiara"));
+        StandKeypadService.KeypadStateView afterOrder1 = keypadService.createOrder(
+                ginoCantina.getId(),
+                List.of(
+                        new StandKeypadService.OrderItemInput(1, 1),
+                        new StandKeypadService.OrderItemInput(1, 1),
+                        new StandKeypadService.OrderItemInput(7, 1)
+                ),
+                null
+        );
+        assertThat(afterOrder1.lastIssuedOrderNumber()).isEqualTo(1);
+        assertThat(afterOrder1.currentDeliveryOrderNumber()).isEqualTo(1);
+        assertThat(piatto1.getAvailablePlates()).isEqualTo(18); // 20 - 2
+        assertThat(vino.getAvailablePlates()).isEqualTo(49);    // 50 - 1
+
+        StandKeypadService.KeypadStateView afterOrder2 = keypadService.createOrder(
+                ginoCantina.getId(),
+                List.of(new StandKeypadService.OrderItemInput(2, 1)),
+                null
+        );
+        assertThat(afterOrder2.lastIssuedOrderNumber()).isEqualTo(2);
+        assertThat(afterOrder2.activeOrdersCount()).isEqualTo(2);
+        assertThat(afterOrder2.currentDeliveryOrderNumber()).isEqualTo(1);
+
+        // Verifica stato LED prima della cucina:
+        // - Slot 1 (Piatto 1): Cucina LED = ON (2 da cuocere), Consegna LED = BLINKING (in attesa cucina)
+        // - Slot 7 (Vino, DRINK): già pronto al bancone -> Consegna LED = SOLID
+        StandKeypadService.SlotView slot1BeforeCook = afterOrder2.slots().get(0);
+        StandKeypadService.SlotView slot7BeforeCook = afterOrder2.slots().get(6);
+        assertThat(slot1BeforeCook.kitchenLedOn()).isTrue();
+        assertThat(slot1BeforeCook.pendingToCookCount()).isEqualTo(2);
+        assertThat(slot1BeforeCook.deliveryLedState()).isEqualTo(DeliveryLedState.BLINKING);
+        assertThat(slot7BeforeCook.deliveryLedState()).isEqualTo(DeliveryLedState.SOLID);
+        assertThat(
+                new com.ginogipsy.sanmartino.stands.api.StandMapper()
+                        .toStandKeypadState(afterOrder2)
+                        .getSlots()
+        ).hasSize(10);
+
+        // 4. La Cucina (ESP32 #2 autenticata con deviceToken) preme 2 volte il Pulsante 1
+        String deviceToken = initial.deviceToken();
+        keypadService.pressKitchenSlot(ginoCantina.getId(), 1, 1, deviceToken);
+        StandKeypadService.KeypadStateView afterKitchenCooked =
+                keypadService.pressKitchenSlot(ginoCantina.getId(), 1, 1, deviceToken);
+
+        StandKeypadService.SlotView slot1AfterCook = afterKitchenCooked.slots().get(0);
+        assertThat(slot1AfterCook.kitchenLedOn()).isFalse(); // Tutte e 2 le porzioni di Piatto 1 sono state cucinate!
+        assertThat(slot1AfterCook.deliveryLedState()).isEqualTo(DeliveryLedState.SOLID);
+
+        // 5. Scricci (DELIVERY) al bancone consegna ha Display = Ordine #1, LED 1 e LED 7 accesi.
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("u-scricci", "scricci"));
+
+        // Scricci preme Pulsante 1 (1a porzione di Piatto 1): LED 1 deve restare ACCESO (1/2 consegnato)
+        StandKeypadService.KeypadStateView afterDeliver1 =
+                keypadService.pressDeliverySlot(ginoCantina.getId(), 1, 1, null);
+        assertThat(afterDeliver1.currentDeliveryOrderNumber()).isEqualTo(1);
+        assertThat(afterDeliver1.slots().get(0).deliveryLedState()).isEqualTo(DeliveryLedState.SOLID);
+
+        // Scricci ripreme Pulsante 1 (2a porzione di Piatto 1): ora LED 1 si SPEGNE (2/2 consegnati)!
+        StandKeypadService.KeypadStateView afterDeliver2 =
+                keypadService.pressDeliverySlot(ginoCantina.getId(), 1, 1, null);
+        assertThat(afterDeliver2.currentDeliveryOrderNumber()).isEqualTo(1);
+        assertThat(afterDeliver2.slots().get(0).deliveryLedState()).isEqualTo(DeliveryLedState.OFF);
+        assertThat(afterDeliver2.slots().get(6).deliveryLedState()).isEqualTo(DeliveryLedState.SOLID);
+
+        // Scricci preme Pulsante 7 (Vino): tutti gli item di Ordine #1 sono stati consegnati ->
+        // passa AUTOMATICAMENTE a Ordine #2 e accende il LED dello Slot 2!
+        StandKeypadService.KeypadStateView afterDeliverWine =
+                keypadService.pressDeliverySlot(ginoCantina.getId(), 7, 1, null);
+        assertThat(afterDeliverWine.lastDeliveredOrderNumber()).isEqualTo(1);
+        assertThat(afterDeliverWine.currentDeliveryOrderNumber()).isEqualTo(2);
+        assertThat(afterDeliverWine.activeOrdersCount()).isEqualTo(1);
+        assertThat(afterDeliverWine.slots().get(0).deliveryLedState()).isEqualTo(DeliveryLedState.OFF);
+        assertThat(afterDeliverWine.slots().get(6).deliveryLedState()).isEqualTo(DeliveryLedState.OFF);
+        assertThat(afterDeliverWine.slots().get(1).deliveryLedState()).isNotEqualTo(DeliveryLedState.OFF);
+
+        // 6. Maria-Chiara (CASHIER) annulla il singolo Ordine #2 rimasto in coda ->
+        //    le porzioni di Piatto 2 (Arrosticini) tornano automaticamente da 29 a 30!
+        UUID order2Id = afterDeliverWine.activeOrders().get(0).id();
+        when(orderRepo.findById(order2Id)).thenAnswer(inv ->
+                storedOrders.stream().filter(o -> o.getId().equals(order2Id)).findFirst()
+        );
+        assertThat(piatto2.getAvailablePlates()).isEqualTo(29);
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("u-maria", "maria-chiara"));
+        StandKeypadService.KeypadStateView afterCancelOrder2 =
+                keypadService.cancelOrder(ginoCantina.getId(), order2Id);
+        assertThat(afterCancelOrder2.activeOrdersCount()).isEqualTo(0);
+        assertThat(piatto2.getAvailablePlates()).isEqualTo(30);
+    }
 }
+
+
