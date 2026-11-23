@@ -3,8 +3,12 @@ package com.ginogipsy.sanmartino.stands.service;
 import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver;
 import com.ginogipsy.sanmartino.observability.audit.AuditUserResolver.AuditUser;
 import com.ginogipsy.sanmartino.observability.audit.Auditable;
+import com.ginogipsy.sanmartino.stands.StandsConfig;
 import com.ginogipsy.sanmartino.stands.domain.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,10 +27,11 @@ public class StandService {
     private final StandInteractionEventRepository interactionEventRepository;
     private final FestivalReviewRepository reviewRepository;
     private final UserFavoriteStandRepository favoriteStandRepository;
+    private final StandOrderRepository orderRepository;
     private final AuditUserResolver auditUserResolver;
 
     public StandService(StandRepository repository) {
-        this(repository, null, null, null, null, null);
+        this(repository, null, null, null, null, null, null);
     }
 
     public StandService(
@@ -34,7 +39,7 @@ public class StandService {
             StandSearchLogRepository searchLogRepository,
             StandInteractionEventRepository interactionEventRepository
     ) {
-        this(repository, searchLogRepository, interactionEventRepository, null, null, null);
+        this(repository, searchLogRepository, interactionEventRepository, null, null, null, null);
     }
 
     public StandService(
@@ -44,7 +49,18 @@ public class StandService {
             FestivalReviewRepository reviewRepository,
             AuditUserResolver auditUserResolver
     ) {
-        this(repository, searchLogRepository, interactionEventRepository, reviewRepository, null, auditUserResolver);
+        this(repository, searchLogRepository, interactionEventRepository, reviewRepository, null, null, auditUserResolver);
+    }
+
+    public StandService(
+            StandRepository repository,
+            StandSearchLogRepository searchLogRepository,
+            StandInteractionEventRepository interactionEventRepository,
+            FestivalReviewRepository reviewRepository,
+            UserFavoriteStandRepository favoriteStandRepository,
+            AuditUserResolver auditUserResolver
+    ) {
+        this(repository, searchLogRepository, interactionEventRepository, reviewRepository, favoriteStandRepository, null, auditUserResolver);
     }
 
     @Autowired
@@ -54,6 +70,7 @@ public class StandService {
             StandInteractionEventRepository interactionEventRepository,
             FestivalReviewRepository reviewRepository,
             UserFavoriteStandRepository favoriteStandRepository,
+            StandOrderRepository orderRepository,
             AuditUserResolver auditUserResolver
     ) {
         this.repository = repository;
@@ -61,15 +78,35 @@ public class StandService {
         this.interactionEventRepository = interactionEventRepository;
         this.reviewRepository = reviewRepository;
         this.favoriteStandRepository = favoriteStandRepository;
+        this.orderRepository = orderRepository;
         this.auditUserResolver = auditUserResolver;
     }
 
-    @Transactional(readOnly = true)
-    public List<StandEntity> findAll() {
-        return repository.findAllByOrderByNumberAsc();
+    /**
+     * Calcola una penalità (-20..0 punti) in base alla lunghezza della coda ordini attiva
+     * sulla pulsantiera della cantina (Step 6 del motore di ricerca), premiando a parità di piatto
+     * le cantine con tempi di attesa più brevi.
+     */
+    static int computeWaitTimePenalty(int activeOrdersCount) {
+        if (activeOrdersCount <= 2) {
+            return 0;
+        }
+        return -Math.min(20, (activeOrdersCount - 2) * 3);
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(StandsConfig.CACHE_STANDS_LIST)
+    public List<StandEntity> findAll() {
+        List<StandEntity> stands = repository.findAllByOrderByNumberAsc();
+        for (StandEntity stand : stands) {
+            stand.getOwners().size();
+            stand.getMenuItems().forEach(item -> item.getKeywords().size());
+        }
+        return stands;
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(value = StandsConfig.CACHE_STAND_DETAIL, key = "#id")
     public StandEntity findById(UUID id) {
         StandEntity stand = repository.findById(id).orElseThrow(() -> new StandNotFoundException(id));
         // Materialize lazy collections so the mapper can read them outside the session
@@ -79,6 +116,11 @@ public class StandService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:CREATE",
             description = "'Creazione cantina: ' + #stand.name + ' (#' + #stand.number + ')'",
@@ -90,6 +132,11 @@ public class StandService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:UPDATE",
             description = "'Modifica cantina: ' + #update.name + ' (#' + #update.number + ')'",
@@ -107,7 +154,20 @@ public class StandService {
         return current;
     }
 
+    @Transactional(readOnly = true)
+    public List<MenuItemEntity> listMenuItems(UUID standId, MenuKind kindFilter) {
+        StandEntity stand = findById(standId);
+        List<MenuItemEntity> items = stand.getMenuItems();
+        if (kindFilter == null) return items;
+        return items.stream().filter(it -> it.getKind() == kindFilter).toList();
+    }
+
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:DELETE",
             description = "'Eliminazione cantina: ' + #id",
@@ -120,15 +180,12 @@ public class StandService {
         repository.deleteById(id);
     }
 
-    @Transactional(readOnly = true)
-    public List<MenuItemEntity> listMenuItems(UUID standId, MenuKind kindFilter) {
-        StandEntity stand = findById(standId);
-        List<MenuItemEntity> items = stand.getMenuItems();
-        if (kindFilter == null) return items;
-        return items.stream().filter(it -> it.getKind() == kindFilter).toList();
-    }
-
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:MENU_ITEM_ADD",
             description = "'Aggiunta piatto al menu: ' + #item.name + ' per cantina ' + #standId",
@@ -143,6 +200,11 @@ public class StandService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:MENU_ITEM_UPDATE",
             description = "'Modifica piatto menu: ' + #update.name + ' (' + #itemId + ') per cantina ' + #standId",
@@ -163,7 +225,17 @@ public class StandService {
         return current;
     }
 
+    @Transactional(readOnly = true)
+    public List<StandOwnerEntity> listOwners(UUID standId) {
+        return findById(standId).getOwners();
+    }
+
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
     @Auditable(
             action = "STAND:MENU_ITEM_DELETE",
             description = "'Eliminazione piatto menu: ' + #itemId + ' per cantina ' + #standId",
@@ -178,27 +250,16 @@ public class StandService {
         stand.removeMenuItem(item);
     }
 
-    @Transactional(readOnly = true)
-    public List<StandOwnerEntity> listOwners(UUID standId) {
-        return findById(standId).getOwners();
-    }
-
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true)
+    })
     public StandOwnerEntity addOwner(UUID standId, StandOwnerEntity owner) {
         StandEntity stand = findById(standId);
         owner.setId(UUID.randomUUID());
         stand.addOwner(owner);
         return owner;
-    }
-
-    @Transactional
-    public void deleteOwner(UUID standId, UUID ownerId) {
-        StandEntity stand = findById(standId);
-        StandOwnerEntity owner = stand.getOwners().stream()
-                .filter(o -> o.getId().equals(ownerId))
-                .findFirst()
-                .orElseThrow(() -> new OwnerNotFoundException(standId, ownerId));
-        stand.removeOwner(owner);
     }
 
     public record StandSearchHit(StandEntity stand, List<MenuItemEntity> matchedItems, int score) {}
@@ -226,6 +287,20 @@ public class StandService {
         return (int) Math.round((avgRating - 3.0) * 10.0);
     }
 
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true)
+    })
+    public void deleteOwner(UUID standId, UUID ownerId) {
+        StandEntity stand = findById(standId);
+        StandOwnerEntity owner = stand.getOwners().stream()
+                .filter(o -> o.getId().equals(ownerId))
+                .findFirst()
+                .orElseThrow(() -> new OwnerNotFoundException(standId, ownerId));
+        stand.removeOwner(owner);
+    }
+
     private static String truncate(String s, int maxLen) {
         if (s == null) return null;
         return s.length() <= maxLen ? s : s.substring(0, maxLen);
@@ -243,7 +318,7 @@ public class StandService {
      * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
      * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
      * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto),
-     *   rating medio approvato (`festival_reviews`) e vicinanza GPS opzionale.
+     *   rating medio approvato (`festival_reviews`), vicinanza GPS opzionale e coda attiva pulsantiera.
      * - salvataggio automatico della ricerca in `stand_search_logs` se la query normalizzata ha lunghezza >= 2.
      */
     @Transactional
@@ -260,12 +335,15 @@ public class StandService {
 
         Map<UUID, Long> itemClickCounts = loadMenuItemClickCounts();
         Map<UUID, Double> itemApprovedRatings = loadApprovedMenuItemRatings();
+        Map<UUID, Integer> standActiveOrderCounts = loadActiveOrderCountsByStand();
 
         List<StandSearchHit> results = new java.util.ArrayList<>();
 
         for (StandEntity stand : allStands) {
             List<MenuItemEntity> menuItems = stand.getMenuItems();
             menuItems.forEach(item -> item.getKeywords().size());
+            int activeQueueCount = stand.getId() != null ? standActiveOrderCounts.getOrDefault(stand.getId(), 0) : 0;
+            int waitTimePenalty = computeWaitTimePenalty(activeQueueCount);
 
             if (tokens.isEmpty()) {
                 List<MenuItemEntity> filteredItems = menuItems.stream()
@@ -274,7 +352,7 @@ public class StandService {
                 if ((kindFilter != null || onlyAvailable) && filteredItems.isEmpty()) {
                     continue;
                 }
-                int gpsScore = computeProximityBonus(stand, userLat, userLng);
+                int gpsScore = computeProximityBonus(stand, userLat, userLng) + waitTimePenalty;
                 results.add(new StandSearchHit(stand, filteredItems, gpsScore));
                 continue;
             }
@@ -303,9 +381,13 @@ public class StandService {
 
             if (!matchedScoredItems.isEmpty() || (standLevelScore > 0 && kindFilter == null && !onlyAvailable)) {
                 int proximityBonus = computeProximityBonus(stand, userLat, userLng);
-                int totalScore = standLevelScore
-                        + matchedScoredItems.stream().mapToInt(ScoredItem::score).sum()
-                        + proximityBonus;
+                int totalScore = Math.max(
+                        1,
+                        standLevelScore
+                                + matchedScoredItems.stream().mapToInt(ScoredItem::score).sum()
+                                + proximityBonus
+                                + waitTimePenalty
+                );
                 List<MenuItemEntity> matchedItems = matchedScoredItems.stream()
                         .map(ScoredItem::item)
                         .toList();
@@ -362,6 +444,7 @@ public class StandService {
     );
 
     @Transactional
+    @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
     public void recordInteraction(
             UUID standId,
             UUID menuItemId,
@@ -396,6 +479,7 @@ public class StandService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = StandsConfig.CACHE_STAND_ANALYTICS, key = "#limit")
     public AnalyticsSummaryView getAnalyticsSummary(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 100));
         PageRequest page = PageRequest.of(0, safeLimit);
@@ -535,7 +619,21 @@ public class StandService {
                 ));
     }
 
+    private Map<UUID, Integer> loadActiveOrderCountsByStand() {
+        if (orderRepository == null) {
+            return Map.of();
+        }
+        return orderRepository.findAllByStatusIn(List.of(StandOrderStatus.IN_PROGRESS, StandOrderStatus.READY))
+                .stream()
+                .filter(o -> o.getStandId() != null)
+                .collect(Collectors.groupingBy(
+                        StandOrderEntity::getStandId,
+                        Collectors.collectingAndThen(Collectors.counting(), Long::intValue)
+                ));
+    }
+
     @Transactional(readOnly = true)
+    @Cacheable(value = StandsConfig.CACHE_STAND_REVIEWS)
     public List<FestivalReviewEntity> listReviews(
             ReviewTargetType targetType,
             UUID targetId,
@@ -548,6 +646,7 @@ public class StandService {
     }
 
     @Transactional
+    @CacheEvict(value = StandsConfig.CACHE_STAND_REVIEWS, allEntries = true)
     @Auditable(
             action = "STAND:REVIEW_CREATE",
             description = "'Invio recensione (' + #targetType + ') voto ' + #rating + '/5 su ' + #targetId",
@@ -628,6 +727,7 @@ public class StandService {
     }
 
     @Transactional
+    @CacheEvict(value = StandsConfig.CACHE_STAND_REVIEWS, allEntries = true)
     @Auditable(
             action = "STAND:REVIEW_MODERATE",
             description = "'Moderazione recensione ' + #reviewId + ' -> ' + #newStatus",

@@ -1,9 +1,6 @@
 package com.ginogipsy.sanmartino.stands.api;
 
-import com.ginogipsy.sanmartino.stands.service.MenuItemNotFoundException;
-import com.ginogipsy.sanmartino.stands.service.OwnerNotFoundException;
-import com.ginogipsy.sanmartino.stands.service.ReviewNotFoundException;
-import com.ginogipsy.sanmartino.stands.service.StandNotFoundException;
+import com.ginogipsy.sanmartino.stands.service.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -39,4 +36,19 @@ public class GlobalExceptionHandler {
         problem.setTitle("Review not found");
         return problem;
     }
+
+    @ExceptionHandler(StandAccessDeniedException.class)
+    public ProblemDetail handleStandAccessDenied(StandAccessDeniedException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.getMessage());
+        problem.setTitle("Access denied for stand station");
+        return problem;
+    }
+
+    @ExceptionHandler(StandKeypadValidationException.class)
+    public ProblemDetail handleStandKeypadValidation(StandKeypadValidationException ex) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+        problem.setTitle("Invalid keypad or order operation");
+        return problem;
+    }
 }
+

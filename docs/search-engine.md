@@ -85,8 +85,12 @@ Le seguenti ottimizzazioni richiedono i dati dei moduli successivi della roadmap
     - Includere nella configurazione esportata di Keycloak (`san-martino-export.json`) tutti i ruoli applicativi e un
       utente superadmin con ruolo speciale **`ROLE_MEZZ`** (o `MEZZ`), abilitato ad assegnare qualsiasi ruolo, creare
       utenti direttamente dal pannello web e gestire in modo completo stands ed eventi.
-- [ ] **TODO (Step 6 — Pulsantiera IoT & Tempo di Attesa Live)**:
-  - Integrare il tempo di attesa stimato della cantina ($\text{Wait Time} = \text{Ordini in Coda} \times \text{Tempo Medio Preparazione}$) per penalizzare leggermente le cantine con code molto lunghe o mostrare un filtro *"Attesa breve (< 10 min)"*.
+- [x] **COMPLETATO (`#059` — Step 6 — Pulsantiera IoT 10 Slot, 3x ESP32, Coda Ordini & Tempo di Attesa Live)**:
+    - Integrata la pulsantiera a 10 slot (`1..10`) con 3 postazioni sincronizzate (**Cassa**, **Cucina**,
+      **Consegna**) + 5 display 7-segmenti TM1637, gestione granulare dei permessi per postazione (`OWNER`, `CASHIER`,
+      `KITCHEN`, `DELIVERY`, `VIEWER`) e calcolo live della coda attiva (`activeOrdersCount`,
+      `currentServingOrderNumber`, `estimatedWaitMinutes`) con penalità automatica per code molto lunghe nel motore di
+      ricerca.
 - [ ] **TODO (Database Scaling — PostgreSQL `pg_trgm` + `unaccent` + `tsvector` GIN Index)**:
   - Quando il catalogo storico supererà migliaia di piatti su più edizioni, spostare il calcolo di similarità e full-text search direttamente in SQL nativo tramite indici `GIN` su `to_tsvector('italian', ...)` e `pg_trgm`.
 - [ ] **TODO (Ricerca Semantica — PostgreSQL `pgvector` / LLM Embeddings)**:

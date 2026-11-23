@@ -84,6 +84,38 @@ public class AuthController {
         ));
     }
 
+    @GetMapping("/users/lookup")
+    public ResponseEntity<?> lookupUsers(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false, defaultValue = "") String search,
+            @RequestParam(defaultValue = "20") int limit
+    ) {
+        if (jwt == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Non autenticato"));
+        }
+        try {
+            int safeLimit = Math.max(1, Math.min(limit, 50));
+            String query = search == null || search.isBlank() ? null : search.trim();
+            java.util.List<Map<String, String>> results = userService.getAllUsers(query, 0, safeLimit)
+                    .stream()
+                    .filter(u -> u.getUsername() != null && !u.getUsername().startsWith("service-account-"))
+                    .map(u -> {
+                        String first = u.getFirstName() != null ? u.getFirstName().trim() : "";
+                        String last = u.getLastName() != null ? u.getLastName().trim() : "";
+                        String fullName = (first + " " + last).trim();
+                        return Map.of(
+                                "username", u.getUsername(),
+                                "email", u.getEmail() != null ? u.getEmail() : "",
+                                "displayName", !fullName.isEmpty() ? fullName : u.getUsername()
+                        );
+                    })
+                    .toList();
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return ResponseEntity.ok(java.util.List.of());
+        }
+    }
+
     @PostMapping("/logout-user")
     public ResponseEntity<String> logout(@AuthenticationPrincipal Jwt jwt) {
         if (jwt != null) {
