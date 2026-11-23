@@ -55,9 +55,41 @@ Le seguenti ottimizzazioni richiedono i dati dei moduli successivi della roadmap
 - [x] **COMPLETATO (`#057` — Step 4 — Recensioni & Rating Medio)**:
     - Aggiunto al ranking un boost proporzionale al voto medio approvato dai moderatori ($\text{Rating} \in [1..5]
       \star$) per i piatti recensiti (`festival_reviews`).
+- [x] **COMPLETATO (`#058` — Step 5 — Cantine Preferite / "Dove voglio andare")**:
+    - Persistenza e sincronizzazione delle cantine preferite dell'utente (`user_favorite_stands`,
+      `GET/PUT/DELETE /v1/stands/favorites`) con supporto offline-first e filtro dedicato sull'app Android.
+- [ ] **TODO (Partecipazione Multi-Evento delle Cantine, Menu per Edizione & Consultazione Storica in Sola Lettura)**:
+    - **Modello Multi-Edizione**: consentire a una stessa cantina (identità storica permanente) di partecipare a più
+      eventi/edizioni annuali, potendo configurare per ciascun evento dettagli specifici (es. numero piazzola,
+      posizione, descrizione dell'edizione) e un menu dedicato di piatti e vini.
+    - **Continuità Storica delle Recensioni**: fare in modo che le recensioni della cantina si perpetuino attraverso le
+      diverse edizioni, così come le recensioni di piatti e vini quando la cantina ripropone gli stessi piatti/vini in
+      edizioni successive (catalogo piatti/vini riutilizzabile della cantina).
+    - **Navigazione Edizioni Passate in Sola Lettura sull'App**: rendere esplorabili sull'app mobile anche tutti gli
+      eventi passati con la stessa identica struttura dell'evento corrente (elenco cantine partecipanti a
+      quell'edizione → menu piatti e vini di quell'anno → recensioni storiche di cantine, piatti e vini), ma in modalità
+      **sola lettura** (senza possibilità di inviare nuove recensioni o modifiche su edizioni concluse).
+- [ ] **TODO (Perfezionamento Recensioni — Regola "Ultimo Commento Approvato per Utente")**:
+    - Mantenere lo storico completo di tutti i commenti inviati su DB (`festival_reviews`), ma fare in modo che per
+      ciascun autore (`author_user_id` / `author_username`) e target (`target_type`, `target_id`) **solo l'ultima
+      recensione in stato `APPROVED`** concorra al calcolo della media voti e venga mostrata pubblicamente.
+- [ ] **TODO (Estensione Completa & Uniforme Recensioni a Cantine, Piatti e Vino/Bevande)**:
+    - Rifinire ed estendere in modo uniforme il flusso di recensione, rating medio e moderazione su tutte le categorie
+      gastronomiche: Cantine (`STAND`), Piatti (`MENU_ITEM` con `kind=FOOD`) e Vino/Bevande (`MENU_ITEM` con
+      `kind=DRINK`), oltre agli Eventi.
+- [ ] **TODO (Miglioramento Visualizzazione Recensioni sull'App Android)**:
+    - Perfezionare l'interfaccia grafica delle recensioni sull'app mobile (badge voto medio direttamente sulle card di
+      cantine/piatti/vini, layout del dialog recensioni più ricco e leggibile, indicatori visivi della propria ultima
+      recensione).
+- [ ] **TODO (Configurazione Keycloak Completa & Superadmin `ROLE_MEZZ`)**:
+    - Includere nella configurazione esportata di Keycloak (`san-martino-export.json`) tutti i ruoli applicativi e un
+      utente superadmin con ruolo speciale **`ROLE_MEZZ`** (o `MEZZ`), abilitato ad assegnare qualsiasi ruolo, creare
+      utenti direttamente dal pannello web e gestire in modo completo stands ed eventi.
 - [ ] **TODO (Step 6 — Pulsantiera IoT & Tempo di Attesa Live)**:
   - Integrare il tempo di attesa stimato della cantina ($\text{Wait Time} = \text{Ordini in Coda} \times \text{Tempo Medio Preparazione}$) per penalizzare leggermente le cantine con code molto lunghe o mostrare un filtro *"Attesa breve (< 10 min)"*.
 - [ ] **TODO (Database Scaling — PostgreSQL `pg_trgm` + `unaccent` + `tsvector` GIN Index)**:
   - Quando il catalogo storico supererà migliaia di piatti su più edizioni, spostare il calcolo di similarità e full-text search direttamente in SQL nativo tramite indici `GIN` su `to_tsvector('italian', ...)` e `pg_trgm`.
 - [ ] **TODO (Ricerca Semantica — PostgreSQL `pgvector` / LLM Embeddings)**:
   - Supportare ricerche conversazionali libere (es. *"qualcosa di caldo vegetariano da mangiare passeggiando"*) generando embedding vettoriali dei piatti al salvataggio e interrogandoli con similarità coseno su `pgvector`.
+
+

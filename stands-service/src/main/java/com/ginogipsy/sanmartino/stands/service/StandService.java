@@ -22,10 +22,11 @@ public class StandService {
     private final StandSearchLogRepository searchLogRepository;
     private final StandInteractionEventRepository interactionEventRepository;
     private final FestivalReviewRepository reviewRepository;
+    private final UserFavoriteStandRepository favoriteStandRepository;
     private final AuditUserResolver auditUserResolver;
 
     public StandService(StandRepository repository) {
-        this(repository, null, null, null, null);
+        this(repository, null, null, null, null, null);
     }
 
     public StandService(
@@ -33,7 +34,17 @@ public class StandService {
             StandSearchLogRepository searchLogRepository,
             StandInteractionEventRepository interactionEventRepository
     ) {
-        this(repository, searchLogRepository, interactionEventRepository, null, null);
+        this(repository, searchLogRepository, interactionEventRepository, null, null, null);
+    }
+
+    public StandService(
+            StandRepository repository,
+            StandSearchLogRepository searchLogRepository,
+            StandInteractionEventRepository interactionEventRepository,
+            FestivalReviewRepository reviewRepository,
+            AuditUserResolver auditUserResolver
+    ) {
+        this(repository, searchLogRepository, interactionEventRepository, reviewRepository, null, auditUserResolver);
     }
 
     @Autowired
@@ -42,12 +53,14 @@ public class StandService {
             StandSearchLogRepository searchLogRepository,
             StandInteractionEventRepository interactionEventRepository,
             FestivalReviewRepository reviewRepository,
+            UserFavoriteStandRepository favoriteStandRepository,
             AuditUserResolver auditUserResolver
     ) {
         this.repository = repository;
         this.searchLogRepository = searchLogRepository;
         this.interactionEventRepository = interactionEventRepository;
         this.reviewRepository = reviewRepository;
+        this.favoriteStandRepository = favoriteStandRepository;
         this.auditUserResolver = auditUserResolver;
     }
 
@@ -643,6 +656,74 @@ public class StandService {
         review.setModeratedAt(now);
         review.setUpdatedAt(now);
         return reviewRepository.save(review);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UUID> listFavoriteStandIds() {
+        if (favoriteStandRepository == null) {
+            return List.of();
+        }
+        AuditUser currentUser = auditUserResolver != null ? auditUserResolver.resolveUser() : AuditUser.ANONYMOUS;
+        if (currentUser == null || currentUser.userId() == null || "anonymous".equalsIgnoreCase(currentUser.userId())) {
+            return List.of();
+        }
+        return favoriteStandRepository.findAllByUserIdOrderByCreatedAtDesc(currentUser.userId())
+                .stream()
+                .map(UserFavoriteStandEntity::getStandId)
+                .toList();
+    }
+
+    @Transactional
+    @Auditable(
+            action = "STAND:FAVORITE_ADD",
+            description = "'Aggiunta cantina preferita: ' + #standId",
+            resourceId = "#standId?.toString()"
+    )
+    public void addFavoriteStand(UUID standId) {
+        if (favoriteStandRepository == null) {
+            return;
+        }
+        if (!repository.existsById(standId)) {
+            throw new StandNotFoundException(standId);
+        }
+        AuditUser currentUser = auditUserResolver != null ? auditUserResolver.resolveUser() : AuditUser.ANONYMOUS;
+        if (currentUser == null || currentUser.userId() == null || "anonymous".equalsIgnoreCase(currentUser.userId())) {
+            return;
+        }
+        String userId = truncate(currentUser.userId(), 120);
+        String username = truncate(
+                currentUser.username() != null && !currentUser.username().isBlank()
+                        ? currentUser.username()
+                        : userId,
+                120
+        );
+        if (favoriteStandRepository.findByUserIdAndStandId(userId, standId).isEmpty()) {
+            UserFavoriteStandEntity entity = new UserFavoriteStandEntity(
+                    UUID.randomUUID(),
+                    userId,
+                    username,
+                    standId,
+                    Instant.now()
+            );
+            favoriteStandRepository.save(entity);
+        }
+    }
+
+    @Transactional
+    @Auditable(
+            action = "STAND:FAVORITE_REMOVE",
+            description = "'Rimozione cantina preferita: ' + #standId",
+            resourceId = "#standId?.toString()"
+    )
+    public void removeFavoriteStand(UUID standId) {
+        if (favoriteStandRepository == null) {
+            return;
+        }
+        AuditUser currentUser = auditUserResolver != null ? auditUserResolver.resolveUser() : AuditUser.ANONYMOUS;
+        if (currentUser == null || currentUser.userId() == null || "anonymous".equalsIgnoreCase(currentUser.userId())) {
+            return;
+        }
+        favoriteStandRepository.deleteByUserIdAndStandId(truncate(currentUser.userId(), 120), standId);
     }
 
     public record SearchQueryStatView(String query, long searchCount, double avgResultsCount, Instant lastSearchedAt) {
