@@ -22,6 +22,8 @@ tags:
     description: Analisi ricerche, click sui piatti e interazioni con le cantine
   - name: reviews
     description: Recensioni di utenti su cantine, piatti ed eventi con moderazione
+  - name: favorites
+    description: Cantine preferite ("Dove voglio andare") salvate dagli utenti autenticati
 
 paths:
   /v1/stands:
@@ -235,6 +237,47 @@ paths:
                 $ref: '#/components/schemas/FestivalReview'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/stands/favorites:
+    get:
+      tags: [ favorites ]
+      summary: Elenca gli ID delle cantine preferite dell'utente autenticato
+      operationId: listFavoriteStandIds
+      responses:
+        '200':
+          description: Lista degli UUID delle cantine salvate tra i preferiti dall'utente corrente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+
+  /v1/stands/favorites/{standId}:
+    parameters:
+      - name: standId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ favorites ]
+      summary: Aggiunge una cantina ai preferiti ("Dove voglio andare") dell'utente autenticato
+      operationId: addFavoriteStand
+      responses:
+        '204':
+          description: Cantina aggiunta ai preferiti (operazione idempotente)
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ favorites ]
+      summary: Rimuove una cantina dai preferiti dell'utente autenticato
+      operationId: removeFavoriteStand
+      responses:
+        '204':
+          description: Cantina rimossa dai preferiti (operazione idempotente)
 
   /v1/stands/{id}:
     parameters:

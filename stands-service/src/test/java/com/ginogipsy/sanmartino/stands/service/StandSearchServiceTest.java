@@ -35,6 +35,9 @@ class StandSearchServiceTest {
     private FestivalReviewRepository reviewRepository;
 
     @Mock
+    private UserFavoriteStandRepository favoriteStandRepository;
+
+    @Mock
     private AuditUserResolver auditUserResolver;
 
     private StandService service;
@@ -46,6 +49,7 @@ class StandSearchServiceTest {
                 searchLogRepository,
                 interactionEventRepository,
                 reviewRepository,
+                favoriteStandRepository,
                 auditUserResolver
         );
     }
@@ -561,5 +565,31 @@ class StandSearchServiceTest {
         assertThat(hits).hasSize(2);
         assertThat(hits.get(0).stand().getName()).isEqualTo("Cantina Due");
         assertThat(hits.get(0).score()).isGreaterThan(hits.get(1).score());
+    }
+
+    @Test
+    void addsListsAndRemovesFavoriteStandsForAuthenticatedUser() {
+        UUID standId = UUID.randomUUID();
+        when(repository.existsById(standId)).thenReturn(true);
+        when(auditUserResolver.resolveUser()).thenReturn(new AuditUser("user-42", "helloworld"));
+        when(favoriteStandRepository.findByUserIdAndStandId("user-42", standId)).thenReturn(Optional.empty());
+
+        service.addFavoriteStand(standId);
+
+        ArgumentCaptor<UserFavoriteStandEntity> favCaptor = ArgumentCaptor.forClass(UserFavoriteStandEntity.class);
+        verify(favoriteStandRepository).save(favCaptor.capture());
+        UserFavoriteStandEntity savedFav = favCaptor.getValue();
+        assertThat(savedFav.getUserId()).isEqualTo("user-42");
+        assertThat(savedFav.getUsername()).isEqualTo("helloworld");
+        assertThat(savedFav.getStandId()).isEqualTo(standId);
+
+        when(favoriteStandRepository.findAllByUserIdOrderByCreatedAtDesc("user-42"))
+                .thenReturn(List.of(savedFav));
+
+        List<UUID> favorites = service.listFavoriteStandIds();
+        assertThat(favorites).containsExactly(standId);
+
+        service.removeFavoriteStand(standId);
+        verify(favoriteStandRepository).deleteByUserIdAndStandId("user-42", standId);
     }
 }
