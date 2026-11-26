@@ -7,11 +7,9 @@
  *   2. STATION_KITCHEN  (Postazione Cucina: 10 pulsanti slot + 10 LED + 2x TM1637)
  *   3. STATION_DELIVERY (Postazione Consegna/Bancone: 10 pulsanti slot + 10 LED + 2x TM1637)
  *
- * Librerie Arduino richieste:
- *   - WiFi.h & HTTPClient.h (incluse nel core ESP32)
- *   - ArduinoJson (>= 7.x)
- *   - TM1637Display (di Avishay Orpaz)
- *   - Adafruit_NeoPixel (opzionale, per pilotare i 10 LED RGB WS2812B con 1 solo pin GPIO 5)
+ * Supporta il caricamento diretto dei parametri dal Web Panel tramite USB
+ * (Web Serial API a 115200 baud -> salvataggio persistente in memoria Flash NVS
+ * tramite <Preferences.h>, senza dover ricompilare su Arduino IDE!).
  * =============================================================================
  */
 
@@ -20,6 +18,8 @@
 #include
 <HTTPClient.h>
 #include
+<Preferences.h>
+#include
 <ArduinoJson.h>
 #include
 <TM1637Display.h>
@@ -27,7 +27,7 @@
 <Adafruit_NeoPixel.h>
 
 // =============================================================================
-// 1. CONFIGURAZIONE POSTAZIONE, RETE E CANTINA
+// 1. CONFIGURAZIONE DI DEFAULT (SOVRASCRIVIBILE DA WEB PANEL VIA USB SERIAL NVS)
 // =============================================================================
 enum StationRole {
 STATION_CASHIER  = 1, // ESP32 #1 — Cassa
@@ -35,16 +35,20 @@ STATION_KITCHEN  = 2, // ESP32 #2 — Cucina
 STATION_DELIVERY = 3  // ESP32 #3 — Consegna / Bancone
 };
 
-// ---> IMPOSTA QUI IL RUOLO DI QUESTA SCHEDA ESP32 <---
-const StationRole CURRENT_STATION = STATION_DELIVERY;
+const char* DEFAULT_STATION_ROLE = "DELIVERY";
+const char* DEFAULT_WIFI_SSID    = "SAN_MARTINO_STAFF_WIFI";
+const char* DEFAULT_WIFI_PASS    = "sanmartino-password";
+const char* DEFAULT_API_BASE_URL = "http://192.168.1.100:8082/v1/stands";
+const char* DEFAULT_STAND_ID     = "22222222-2222-2222-2222-000000000001";
+const char* DEFAULT_DEVICE_TOKEN = "ESP32-CANTINA-01-DEMO2026";
 
-const char* WIFI_SSID     = "SAN_MARTINO_STAFF_WIFI";
-const char* WIFI_PASSWORD = "sanmartino-password";
-
-// Endpoint Gateway / stands-service e credenziali hardware generate dal pannello web
-const char* API_BASE_URL  = "http://192.168.1.100:8080/v1/stands";
-const char* STAND_ID      = "22222222-2222-2222-2222-000000000001";
-const char* DEVICE_TOKEN  = "ESP32-CANTINA-01-TOKEN";
+Preferences preferences;
+StationRole currentStation = STATION_DELIVERY;
+String cfgWifiSsid;
+String cfgWifiPass;
+String cfgApiBaseUrl;
+String cfgStandId;
+String cfgDeviceToken;
 
 // =============================================================================
 // 2. PINOUT HARDWARE ESP32 (10 PULSANTI SLOT + CONFERMA/RESET + 2x TM1637 + 10 LED)
@@ -62,7 +66,7 @@ const int SLOT_BUTTON_PINS[NUM_SLOTS] = {
 32, // Slot 7  (es. Vino Rosso / Calice)
 35, // Slot 8  (es. Vino Bianco / Birra) [ext 10k pull-up]
 34, // Slot 9  (es. Dolce / Castagne)   [ext 10k pull-up]
-39  // Slot 10 (es. Acqua / Extra)      [ext 10k pull-up]
+39  // Slot 10 (es. Liquore / Extra)    [ext 10k pull-up]
 };
 
 // Pulsanti extra per la Postazione CASSA (Conferma Ordine e Annulla/Reset selezione)
@@ -84,16 +88,15 @@ Adafruit_NeoPixel strip(NUM_SLOTS, PIN_NEOPIXEL_LEDS, NEO_GRB + NEO_KHZ800);
 // =============================================================================
 // 3. STATO LOCALE DELLA POSTAZIONE
 // =============================================================================
-int cashierDraftQty[NUM_SLOTS] = {
+int cashierDraftQty[NUM_SLOTS]  = {
 0
 };
-bool kitchenLedOn[NUM_SLOTS] = {
+bool kitchenLedOn[NUM_SLOTS]    = {
 false
 };
-// 0 = OFF, 1 = BLINKING (in attesa cucina), 2 = SOLID (pronto da servire/premere)
 int deliveryLedState[NUM_SLOTS] = {
 0
-};
+}; // 0 = OFF, 1 = BLINKING, 2 = SOLID
 
 int lastIssuedOrderNumber      = 0;
 int oldestKitchenOrderNumber   = 0;
@@ -112,11 +115,98 @@ bool blinkPhaseOn           = true;
 const unsigned long POLL_INTERVAL_MS  = 1500;
 const unsigned long BLINK_INTERVAL_MS = 350;
 
+StationRole parseStationRole(const String& roleStr) {
+if (roleStr.equalsIgnoreCase("CASHIER")) return STATION_CASHIER;
+if (roleStr.equalsIgnoreCase("KITCHEN")) return STATION_KITCHEN;
+return STATION_DELIVERY;
+}
+
+String stationQueryParam() {
+if (currentStation == STATION_CASHIER) return "CASHIER";
+if (currentStation == STATION_KITCHEN) return "KITCHEN";
+return "DELIVERY";
+}
+
+void loadConfigFromNvs() {
+preferences.begin("sanmartino", true);
+String roleStr = preferences.getString("stationRole", DEFAULT_STATION_ROLE);
+cfgWifiSsid    = preferences.getString("wifiSsid", DEFAULT_WIFI_SSID);
+cfgWifiPass    = preferences.getString("wifiPass", DEFAULT_WIFI_PASS);
+cfgApiBaseUrl  = preferences.getString("apiBaseUrl", DEFAULT_API_BASE_URL);
+cfgStandId     = preferences.getString("standId", DEFAULT_STAND_ID);
+cfgDeviceToken = preferences.getString("deviceToken", DEFAULT_DEVICE_TOKEN);
+preferences.end();
+
+currentStation = parseStationRole(roleStr);
+Serial.printf("[CONFIG NVS] Station=%s | StandId=%s | API=%s | WiFi=%s\n",
+stationQueryParam().c_str(), cfgStandId.c_str(), cfgApiBaseUrl.c_str(), cfgWifiSsid.c_str());
+}
+
+/**
+ * Ascolta sulla porta USB Serial (115200 baud) i comandi inviati dal Web Panel
+ * tramite Web Serial API (`PROVISION:{"stationRole":...}` o `STATUS`).
+ */
+void checkSerialProvisioning() {
+if (!Serial.available()) return;
+String line = Serial.readStringUntil('\n');
+line.trim();
+if (line.length() == 0) return;
+
+if (line.equalsIgnoreCase("STATUS")) {
+Serial.printf("STATUS_OK:{\"stationRole\":\"%s\",\"standId\":\"%s\",\"apiBaseUrl\":\"%s\",\"wifiSsid\":\"%s\",\"ip\":\"%s\"}\n",
+stationQueryParam().c_str(),
+cfgStandId.c_str(),
+cfgApiBaseUrl.c_str(),
+cfgWifiSsid.c_str(),
+WiFi.localIP().toString().c_str());
+return;
+}
+
+if (line.startsWith("PROVISION:")) {
+String jsonPart = line.substring(10);
+JsonDocument doc;
+DeserializationError err = deserializeJson(doc, jsonPart);
+if (err) {
+Serial.printf("PROVISION_ERR:JSON non valido (%s)\n", err.c_str());
+return;
+}
+
+String newRole  = doc["stationRole"] | stationQueryParam();
+String newSsid  = doc["wifiSsid"]    | cfgWifiSsid;
+String newPass  = doc["wifiPass"]    | cfgWifiPass;
+String newApi   = doc["apiBaseUrl"]  | cfgApiBaseUrl;
+String newStand = doc["standId"]     | cfgStandId;
+String newToken = doc["deviceToken"] | cfgDeviceToken;
+
+preferences.begin("sanmartino", false);
+preferences.putString("stationRole", newRole);
+preferences.putString("wifiSsid", newSsid);
+preferences.putString("wifiPass", newPass);
+preferences.putString("apiBaseUrl", newApi);
+preferences.putString("standId", newStand);
+preferences.putString("deviceToken", newToken);
+preferences.end();
+
+display1.showNumberDec(8888, true);
+display2.showNumberDec(8888, true);
+for (int i = 0; i < NUM_SLOTS; i++) {
+strip.setPixelColor(i, strip.Color(0, 255, 80));
+}
+strip.show();
+
+Serial.printf("PROVISION_OK:{\"stationRole\":\"%s\",\"standId\":\"%s\",\"wifiSsid\":\"%s\"}\n",
+newRole.c_str(), newStand.c_str(), newSsid.c_str());
+delay(600);
+ESP.restart();
+}
+}
+
 // =============================================================================
 // 4. INIZIALIZZAZIONE
 // =============================================================================
 void setup() {
 Serial.begin(115200);
+loadConfigFromNvs();
 
 for (int i = 0; i < NUM_SLOTS; i++) {
 int pin = SLOT_BUTTON_PINS[i];
@@ -141,35 +231,40 @@ strip.clear();
 strip.show();
 
 WiFi.mode(WIFI_STA);
-WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-Serial.print("Connessione Wi-Fi in corso");
-while (WiFi.status() != WL_CONNECTED) {
-delay(400);
+WiFi.begin(cfgWifiSsid.c_str(), cfgWifiPass.c_str());
+Serial.print("Connessione Wi-Fi in corso a " + cfgWifiSsid);
+unsigned long startAttempt = millis();
+// Attende max 10s all'avvio così la porta seriale USB rimane sempre pronta al provisioning Web Serial
+while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 10000) {
+checkSerialProvisioning();
+delay(250);
 Serial.print(".");
 }
+if (WiFi.status() == WL_CONNECTED) {
 Serial.println("\nWi-Fi connesso! IP: " + WiFi.localIP().toString());
-
 fetchKeypadState();
+} else {
+Serial.println("\nWi-Fi non raggiungibile: in ascolto su USB Serial (115200) per provisioning da Web Panel...");
+}
 }
 
 // =============================================================================
 // 5. LOOP PRINCIPALE
 // =============================================================================
 void loop() {
+checkSerialProvisioning();
 unsigned long now = millis();
 
-// Gestione lampeggio LED (per Consegna in attesa della Cucina)
 if (now - lastBlinkTime >= BLINK_INTERVAL_MS) {
 lastBlinkTime = now;
 blinkPhaseOn = !blinkPhaseOn;
 refreshLeds();
 }
 
-// Lettura dei 10 pulsanti slot
 for (int i = 0; i < NUM_SLOTS; i++) {
 bool reading = digitalRead(SLOT_BUTTON_PINS[i]);
 if (lastSlotBtnState[i] == HIGH && reading == LOW) {
-delay(35); // Debounce
+delay(35);
 if (digitalRead(SLOT_BUTTON_PINS[i]) == LOW) {
 onSlotButtonPressed(i + 1);
 }
@@ -177,8 +272,7 @@ onSlotButtonPressed(i + 1);
 lastSlotBtnState[i] = reading;
 }
 
-// Lettura pulsanti Conferma / Annulla (usati sulla Postazione CASSA)
-if (CURRENT_STATION == STATION_CASHIER) {
+if (currentStation == STATION_CASHIER) {
 bool confirmRead = digitalRead(PIN_BTN_CONFIRM);
 if (lastConfirmBtnState == HIGH && confirmRead == LOW) {
 delay(35);
@@ -198,7 +292,6 @@ clearCashierDraft();
 lastCancelBtnState = cancelRead;
 }
 
-// Polling periodico dello stato dal backend
 if (now - lastPollTime >= POLL_INTERVAL_MS) {
 lastPollTime = now;
 fetchKeypadState();
@@ -212,20 +305,15 @@ void onSlotButtonPressed(int slotNumber) {
 int idx = slotNumber - 1;
 Serial.printf("Premuto pulsante Slot %d\n", slotNumber);
 
-if (CURRENT_STATION == STATION_CASHIER) {
-// CASSA: aggiunge +1 porzione dello slot all'ordine in composizione
+if (currentStation == STATION_CASHIER) {
 cashierDraftQty[idx]++;
 int totalItems = 0;
 for (int i = 0; i < NUM_SLOTS; i++) totalItems += cashierDraftQty[i];
 display1.showNumberDec(totalItems, false);
 refreshLeds();
-} else if (CURRENT_STATION == STATION_KITCHEN) {
-// CUCINA: segna 1 porzione pronta per lo slot premuto
+} else if (currentStation == STATION_KITCHEN) {
 sendSlotPress("/keypad/kitchen/press", slotNumber);
-} else if (CURRENT_STATION == STATION_DELIVERY) {
-// CONSEGNA: segna 1 porzione servita sul vassoio per l'ordine corrente;
-// quando tutti i piatti dell'ordine corrente sono stati premuti, il backend
-// avanza automaticamente al prossimo numero d'ordine!
+} else if (currentStation == STATION_DELIVERY) {
 sendSlotPress("/keypad/delivery/press", slotNumber);
 }
 }
@@ -241,19 +329,13 @@ refreshLeds();
 // =============================================================================
 // 7. CHIAMATE HTTP REST AL BACKEND (stands-service)
 // =============================================================================
-String stationQueryParam() {
-if (CURRENT_STATION == STATION_CASHIER) return "CASHIER";
-if (CURRENT_STATION == STATION_KITCHEN) return "KITCHEN";
-return "DELIVERY";
-}
-
 void fetchKeypadState() {
 if (WiFi.status() != WL_CONNECTED) return;
 
 HTTPClient http;
-String url = String(API_BASE_URL) + "/" + STAND_ID + "/keypad/state?station=" + stationQueryParam();
+String url = cfgApiBaseUrl + "/" + cfgStandId + "/keypad/state?station=" + stationQueryParam();
 http.begin(url);
-http.addHeader("X-Device-Token", DEVICE_TOKEN);
+http.addHeader("X-Device-Token", cfgDeviceToken);
 
 int code = http.GET();
 if (code == 200) {
@@ -281,10 +363,10 @@ String body;
 serializeJson(doc, body);
 
 HTTPClient http;
-String url = String(API_BASE_URL) + "/" + STAND_ID + "/keypad/orders";
+String url = cfgApiBaseUrl + "/" + cfgStandId + "/keypad/orders";
 http.begin(url);
 http.addHeader("Content-Type", "application/json");
-http.addHeader("X-Device-Token", DEVICE_TOKEN);
+http.addHeader("X-Device-Token", cfgDeviceToken);
 
 int code = http.POST(body);
 if (code == 200 || code == 201) {
@@ -305,10 +387,10 @@ String body;
 serializeJson(doc, body);
 
 HTTPClient http;
-String url = String(API_BASE_URL) + "/" + STAND_ID + pathSuffix;
+String url = cfgApiBaseUrl + "/" + cfgStandId + pathSuffix;
 http.begin(url);
 http.addHeader("Content-Type", "application/json");
-http.addHeader("X-Device-Token", DEVICE_TOKEN);
+http.addHeader("X-Device-Token", cfgDeviceToken);
 
 int code = http.POST(body);
 if (code == 200) {
@@ -351,7 +433,7 @@ refreshLeds();
 // 8. AGGIORNAMENTO DISPLAY 7-SEGMENTI TM1637 E 10 LED RGB
 // =============================================================================
 void refreshDisplays() {
-if (CURRENT_STATION == STATION_CASHIER) {
+if (currentStation == STATION_CASHIER) {
 int draftCount = 0;
 for (int i = 0; i < NUM_SLOTS; i++) draftCount += cashierDraftQty[i];
 if (draftCount > 0) {
@@ -359,10 +441,10 @@ display1.showNumberDec(draftCount, false);
 } else {
 display1.showNumberDec(lastIssuedOrderNumber, true);
 }
-} else if (CURRENT_STATION == STATION_KITCHEN) {
+} else if (currentStation == STATION_KITCHEN) {
 display1.showNumberDec(oldestKitchenOrderNumber, true);
 display2.showNumberDec(totalPendingKitchenDishes, false);
-} else if (CURRENT_STATION == STATION_DELIVERY) {
+} else if (currentStation == STATION_DELIVERY) {
 display1.showNumberDec(currentDeliveryOrderNumber, true);
 display2.showNumberDec(lastDeliveredOrderNumber, true);
 }
@@ -370,21 +452,21 @@ display2.showNumberDec(lastDeliveredOrderNumber, true);
 
 void refreshLeds() {
 for (int i = 0; i < NUM_SLOTS; i++) {
-uint32_t color = 0; // Spento
+uint32_t color = 0;
 
-if (CURRENT_STATION == STATION_CASHIER) {
+if (currentStation == STATION_CASHIER) {
 if (cashierDraftQty[i] > 0) {
-color = strip.Color(0, 180, 255); // Azzurro: piatto selezionato nello scontrino corrente
+color = strip.Color(0, 180, 255);
 }
-} else if (CURRENT_STATION == STATION_KITCHEN) {
+} else if (currentStation == STATION_KITCHEN) {
 if (kitchenLedOn[i]) {
-color = strip.Color(255, 60, 0); // Arancione/Rosso fisso: piatto da cucinare!
+color = strip.Color(255, 60, 0);
 }
-} else if (CURRENT_STATION == STATION_DELIVERY) {
+} else if (currentStation == STATION_DELIVERY) {
 if (deliveryLedState[i] == 2) {
-color = strip.Color(0, 230, 60); // Verde fisso: piatto/vino pronto da servire e premere!
+color = strip.Color(0, 230, 60);
 } else if (deliveryLedState[i] == 1 && blinkPhaseOn) {
-color = strip.Color(255, 160, 0); // Giallo lampeggiante: nell'ordine corrente ma ancora in cottura
+color = strip.Color(255, 160, 0);
 }
 }
 
