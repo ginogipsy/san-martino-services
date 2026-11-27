@@ -11,7 +11,9 @@ import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 
 import java.util.Map;
 
@@ -76,6 +78,31 @@ class KafkaObservabilityAutoConfigurationTest {
                 .run(context -> {
                     assertThat(context).doesNotHaveBean(KafkaCorrelationRecordInterceptor.class);
                     assertThat(producerConfigs(context)).doesNotContainKey(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG);
+                });
+    }
+
+    @Test
+    void enablesObservationOnKafkaTemplateAndListenerContainerFactory() {
+        runner.run(context -> {
+            KafkaTemplate<?, ?> template = context.getBean(KafkaTemplate.class);
+            ConcurrentKafkaListenerContainerFactory<?, ?> factory =
+                    context.getBean(ConcurrentKafkaListenerContainerFactory.class);
+
+            assertThat(template).extracting("observationEnabled").isEqualTo(true);
+            assertThat(factory.getContainerProperties().isObservationEnabled()).isTrue();
+        });
+    }
+
+    @Test
+    void doesNotEnableKafkaObservationWhenTracingIsDisabled() {
+        runner.withPropertyValues("sanmartino.observability.tracing.enabled=false")
+                .run(context -> {
+                    KafkaTemplate<?, ?> template = context.getBean(KafkaTemplate.class);
+                    ConcurrentKafkaListenerContainerFactory<?, ?> factory =
+                            context.getBean(ConcurrentKafkaListenerContainerFactory.class);
+
+                    assertThat(template).extracting("observationEnabled").isEqualTo(false);
+                    assertThat(factory.getContainerProperties().isObservationEnabled()).isFalse();
                 });
     }
 

@@ -24,3 +24,4 @@ scripts
 **/*.jks
 **/firebase-*.json
 **/*service-account*.json
+!/.env

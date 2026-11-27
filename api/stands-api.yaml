@@ -18,13 +18,36 @@ tags:
     description: Menu items (cibo + bevande) di una cantina
   - name: owners
     description: Proprietari di una cantina
+  - name: analytics
+    description: Analisi ricerche, click sui piatti e interazioni con le cantine
+  - name: reviews
+    description: Recensioni di utenti su cantine, piatti ed eventi con moderazione
+  - name: favorites
+    description: Cantine preferite ("Dove voglio andare") salvate dagli utenti autenticati
+  - name: keypad
+    description: Pulsantiera IoT 10 Slot (3x ESP32 Cassa/Cucina/Consegna), Coda Ordini e Permessi Operatori per Cantina
 
 paths:
   /v1/stands:
     get:
       tags: [stands]
-      summary: Elenca tutte le cantine (versione summary)
+      summary: Elenca tutte le cantine (versione summary, filtrata opzionalmente per edizione/evento)
       operationId: listStands
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (es. 2026, 2025, 2024, 2018, 2014). Se omesso restituisce l'edizione corrente (2026).
+          schema:
+            type: string
+            format: uuid
+        - name: includeNonParticipating
+          in: query
+          required: false
+          description: Se true (usato dal pannello di amministrazione), elenca tutte le cantine anagrafiche anche se non ancora iscritte all'eventId selezionato.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Lista di cantine (summary, senza owners/menu)
@@ -54,13 +77,247 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
+  /v1/stands/search:
+    get:
+      tags: [stands]
+      summary: Ricerca intelligente cantine e piatti per nome, parole chiave e descrizione
+      description: |
+        Cerca tra tutte le cantine e i rispettivi piatti/bevande sfruttando il nome del piatto,
+        le parole chiave (`keywords`, es. `pasta, primo, sugo, guanciale`) e le descrizioni IT/EN,
+        ordinando i risultati per rilevanza (`score`) e disponibilità.
+      operationId: searchStands
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Testo ricercato (es. "pasta", "amatriciana", "guanciale", "tartufo")
+          schema:
+            type: string
+        - name: kind
+          in: query
+          required: false
+          description: Filtra i piatti corrispondenti per tipologia (FOOD o DRINK)
+          schema:
+            $ref: '#/components/schemas/MenuKind'
+        - name: onlyAvailable
+          in: query
+          required: false
+          description: Se true, considera solo i piatti con porzioni disponibili (`availablePlates > 0`)
+          schema:
+            type: boolean
+            default: false
+        - name: lat
+          in: query
+          required: false
+          description: Latitudine utente (opzionale) per boost di vicinanza GPS a parità di rilevanza
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+        - name: lng
+          in: query
+          required: false
+          description: Longitudine utente (opzionale) per boost di vicinanza GPS a parità di rilevanza
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione su cui effettuare la ricerca (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Risultati della ricerca ordinati per punteggio di rilevanza decrescente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StandSearchResult'
+
+  /v1/stands/analytics/interactions:
+    post:
+      tags: [ analytics ]
+      summary: Registra un click su un piatto o un'interazione con una cantina
+      operationId: recordInteraction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandInteractionCreate'
+      responses:
+        '204':
+          description: Interazione registrata con successo
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/analytics/summary:
+    get:
+      tags: [ analytics ]
+      summary: Riepilogo analitico delle ricerche effettuate e dei piatti/cantine più cliccati
+      operationId: getAnalyticsSummary
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Numero massimo di elementi per ciascuna classifica (default 10)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: Statistiche aggregate su ricerche, piatti più richiesti e cantine più visitate
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandAnalyticsSummary'
+
+  /v1/stands/reviews:
+    get:
+      tags: [ reviews ]
+      summary: Elenca le recensioni filtrando per tipo target, ID target e stato di moderazione
+      operationId: listReviews
+      parameters:
+        - name: targetType
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReviewTargetType'
+        - name: targetId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ReviewStatus'
+      responses:
+        '200':
+          description: Lista delle recensioni
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FestivalReview'
+    post:
+      tags: [ reviews ]
+      summary: Invia una nuova recensione (creata in stato PENDING per approvazione moderatore)
+      operationId: createReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FestivalReviewCreate'
+      responses:
+        '201':
+          description: Recensione inviata e messa in coda di moderazione
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FestivalReview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/stands/reviews/{reviewId}/moderation:
+    parameters:
+      - name: reviewId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ reviews ]
+      summary: Approva o rifiuta una recensione (riservato a Moderatori e Admin)
+      operationId: moderateReview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FestivalReviewModeration'
+      responses:
+        '200':
+          description: Stato di moderazione aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FestivalReview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/favorites:
+    get:
+      tags: [ favorites ]
+      summary: Elenca gli ID delle cantine preferite dell'utente autenticato
+      operationId: listFavoriteStandIds
+      responses:
+        '200':
+          description: Lista degli UUID delle cantine salvate tra i preferiti dall'utente corrente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: uuid
+
+  /v1/stands/favorites/{standId}:
+    parameters:
+      - name: standId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ favorites ]
+      summary: Aggiunge una cantina ai preferiti ("Dove voglio andare") dell'utente autenticato
+      operationId: addFavoriteStand
+      responses:
+        '204':
+          description: Cantina aggiunta ai preferiti (operazione idempotente)
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ favorites ]
+      summary: Rimuove una cantina dai preferiti dell'utente autenticato
+      operationId: removeFavoriteStand
+      responses:
+        '204':
+          description: Cantina rimossa dai preferiti (operazione idempotente)
+
   /v1/stands/{id}:
     parameters:
       - $ref: '#/components/parameters/StandId'
     get:
       tags: [stands]
-      summary: Dettaglio di una cantina (include owners e menu)
+      summary: Dettaglio di una cantina (include owners e menu dell'edizione selezionata)
       operationId: getStand
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Cantina trovata
@@ -72,8 +329,16 @@ paths:
           $ref: '#/components/responses/NotFound'
     put:
       tags: [stands]
-      summary: Aggiorna info base di una cantina
+      summary: Aggiorna info base di una cantina (e la partecipazione per l'eventId specificato)
       operationId: updateStand
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione su cui salvare numero, descrizione e coordinate
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -101,12 +366,50 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/stands/{id}/editions/{eventId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ stands ]
+      summary: Iscrive o aggiorna la partecipazione di una cantina a una specifica edizione/evento
+      operationId: upsertStandEditionParticipation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandUpdate'
+      responses:
+        '200':
+          description: Partecipazione della cantina all'edizione registrata o aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ stands ]
+      summary: Rimuove la partecipazione (e i relativi piatti di quell'anno) della cantina dall'edizione indicata
+      operationId: deleteStandEditionParticipation
+      responses:
+        '204':
+          description: Partecipazione all'edizione rimossa
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/stands/{id}/menu-items:
     parameters:
       - $ref: '#/components/parameters/StandId'
     get:
       tags: [menu]
-      summary: Lista del menu di una cantina
+      summary: Lista del menu di una cantina (per edizione o catalogo storico completo)
       operationId: listMenuItems
       parameters:
         - name: kind
@@ -114,9 +417,23 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/MenuKind'
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
+        - name: allEditions
+          in: query
+          required: false
+          description: Se true, restituisce il catalogo storico di tutti i piatti/vini proposti dalla cantina nelle varie edizioni
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Menu della cantina (filtrato per kind se passato)
+          description: Menu della cantina (filtrato per kind ed eventId se passati)
           content:
             application/json:
               schema:
@@ -127,8 +444,16 @@ paths:
           $ref: '#/components/responses/NotFound'
     post:
       tags: [menu]
-      summary: Aggiunge un piatto o bevanda al menu
+      summary: Aggiunge un piatto o bevanda al menu dell'edizione selezionata
       operationId: addMenuItem
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione a cui associare il piatto/vino (può essere passato anche nel body)
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -240,6 +565,302 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/stands/keypad/accessible:
+    get:
+      tags: [ keypad ]
+      summary: Elenca le cantine accessibili dall'utente corrente sulla Pulsantiera/Ordini con i relativi permessi di postazione
+      operationId: listAccessibleKeypadStands
+      responses:
+        '200':
+          description: Lista delle cantine su cui l'utente ha almeno un ruolo (OWNER, CASHIER, KITCHEN, DELIVERY, VIEWER)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AccessibleKeypadStand'
+
+  /v1/stands/{id}/keypad/state:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    get:
+      tags: [ keypad ]
+      summary: Stato live della pulsantiera a 10 slot, display 7 segmenti e coda ordini della cantina
+      operationId: getStandKeypadState
+      parameters:
+        - name: station
+          in: query
+          required: false
+          description: Postazione che effettua il polling (per telemetria heartbeat ESP32/Web)
+          schema:
+            $ref: '#/components/schemas/KeypadStationRole'
+        - name: X-Device-Token
+          in: header
+          required: false
+          description: Token hardware opzionale per autenticazione diretta delle 3 schede ESP32 della cantina
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Stato completo della pulsantiera, dei 10 slot LED/pulsanti, dei display e della coda ordini
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/slots:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    put:
+      tags: [ keypad ]
+      summary: Configura l'associazione dei 10 slot fisici (1..10) ai piatti/bevande del menu (richiede OWNER o ADMIN)
+      operationId: updateStandKeypadSlots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotsUpdate'
+      responses:
+        '200':
+          description: Configurazione slot aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/permissions:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Assegna un permesso di postazione (CASHIER, KITCHEN, DELIVERY, VIEWER, OWNER) a un utente per questa cantina
+      operationId: addStandStaffPermission
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandStaffPermissionCreate'
+      responses:
+        '200':
+          description: Permesso aggiunto e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/permissions/{permissionId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: permissionId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    delete:
+      tags: [ keypad ]
+      summary: Revoca un permesso di postazione precedentemente assegnato a un utente sulla cantina
+      operationId: deleteStandStaffPermission
+      responses:
+        '200':
+          description: Permesso revocato e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CASSA (Web o ESP32 #1) — Conferma un nuovo ordine decrementando le porzioni e accodandolo per Cucina e Consegna
+      operationId: createStandKeypadOrder
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadOrderCreate'
+      responses:
+        '201':
+          description: Ordine creato con numero progressivo assegnato e stato pulsantiera aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/kitchen/press:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CUCINA (Web o ESP32 #2) — Segna 1 porzione pronta per lo slot premuto sull'ordine più vecchio in attesa
+      operationId: pressKitchenKeypadSlot
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotPress'
+      responses:
+        '200':
+          description: Porzione segnata come pronta in cucina e stato LED aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/delivery/press:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Postazione CONSEGNA (Web o ESP32 #3) — Segna 1 porzione servita per lo slot premuto sull'ordine corrente in uscita e avanza automaticamente al prossimo ordine quando tutti i piatti sono stati consegnati
+      operationId: pressDeliveryKeypadSlot
+      parameters:
+        - name: X-Device-Token
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandKeypadSlotPress'
+      responses:
+        '200':
+          description: Porzione consegnata; se l'ordine corrente è completo, passa automaticamente al numero d'ordine successivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/reset-counter:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+    post:
+      tags: [ keypad ]
+      summary: Azzera la coda attiva e riporta il contatore progressivo ordini a #1 (inizio nuova serata/turno, richiede OWNER o ADMIN)
+      operationId: resetStandKeypadCounter
+      responses:
+        '200':
+          description: Contatore ordini riportato a 1 e stato aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/{orderId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [ keypad ]
+      summary: Annulla un singolo ordine attivo in coda e ripristina automaticamente le porzioni disponibili nel menu (richiede CASHIER o OWNER)
+      operationId: cancelStandKeypadOrder
+      responses:
+        '200':
+          description: Ordine annullato, porzioni ripristinate e stato pulsantiera aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/stands/{id}/keypad/orders/{orderId}/complete:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      tags: [ keypad ]
+      summary: Forza il completamento immediato (DELIVERED) di un singolo ordine in coda (richiede DELIVERY o OWNER)
+      operationId: completeStandKeypadOrder
+      responses:
+        '200':
+          description: Ordine segnato come completamente consegnato e avanzamento coda aggiornato
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandKeypadState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   parameters:
     StandId:
@@ -275,6 +896,16 @@ components:
         id:
           type: string
           format: uuid
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione rappresentata
+        participatingEventIds:
+          type: array
+          description: Lista degli UUID delle edizioni a cui la cantina partecipa
+          items:
+            type: string
+            format: uuid
         number:
           type: integer
           description: Numero della cantina come stampato sui volantini (es. 1..58)
@@ -297,6 +928,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        activeOrdersCount:
+          type: integer
+          description: Numero di ordini attualmente in coda nella pulsantiera della cantina
+        currentServingOrderNumber:
+          type: integer
+          description: Numero dell'ordine attualmente in preparazione/consegna al bancone (0 se coda vuota)
+        estimatedWaitMinutes:
+          type: integer
+          description: Stima indicativa dei minuti di attesa in base alla coda ordini attiva
 
     StandDetail:
       allOf:
@@ -317,6 +957,10 @@ components:
       type: object
       required: [number, name, description, firstParticipationYear, latitude, longitude]
       properties:
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui iscrivere la nuova cantina (default edizione corrente 2026)
         number:
           type: integer
           minimum: 1
@@ -346,6 +990,9 @@ components:
       type: object
       required: [number, name, description, firstParticipationYear, latitude, longitude]
       properties:
+        eventId:
+          type: string
+          format: uuid
         number:
           type: integer
           minimum: 1
@@ -381,6 +1028,14 @@ components:
         standId:
           type: string
           format: uuid
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui appartiene questo piatto/vino
+        canonicalItemId:
+          type: string
+          format: uuid
+          description: UUID canonico del piatto/vino condiviso tra più edizioni per continuità storica delle recensioni
         name:
           type: string
         description:
@@ -400,6 +1055,14 @@ components:
       type: object
       required: [name, description, availablePlates, kind]
       properties:
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui appartiene il piatto/vino
+        canonicalItemId:
+          type: string
+          format: uuid
+          description: UUID canonico opzionale se si riutilizza un piatto/vino già proposto in altre edizioni
         name:
           type: string
           minLength: 1
@@ -476,6 +1139,583 @@ components:
         role:
           $ref: '#/components/schemas/OwnerRole'
 
+    StandSearchResult:
+      type: object
+      required: [stand, matchedItems, score]
+      properties:
+        stand:
+          $ref: '#/components/schemas/StandSummary'
+        matchedItems:
+          type: array
+          description: Piatti o bevande della cantina che corrispondono alla ricerca
+          items:
+            $ref: '#/components/schemas/MenuItem'
+        score:
+          type: integer
+          description: Punteggio di rilevanza calcolato dall'algoritmo di ricerca
+
+    StandInteractionType:
+      type: string
+      enum:
+        - MENU_ITEM_CLICK
+        - STAND_FOOD_OPEN
+        - STAND_DRINK_OPEN
+        - STAND_DESCRIPTION_OPEN
+        - STAND_MAP_OPEN
+
+    StandInteractionCreate:
+      type: object
+      required: [ standId, interactionType ]
+      properties:
+        standId:
+          type: string
+          format: uuid
+          description: ID della cantina coinvolta nell'interazione
+        menuItemId:
+          type: string
+          format: uuid
+          description: ID del piatto o bevanda cliccato (se interactionType è MENU_ITEM_CLICK)
+        interactionType:
+          $ref: '#/components/schemas/StandInteractionType'
+        searchQuery:
+          type: string
+          maxLength: 200
+          description: Eventuale testo di ricerca attivo al momento del click
+
+    SearchQueryStat:
+      type: object
+      required: [ query, searchCount, avgResultsCount ]
+      properties:
+        query:
+          type: string
+          description: Termine o frase ricercata (normalizzata)
+        searchCount:
+          type: integer
+          format: int64
+          description: Numero totale di volte in cui è stata cercata
+        avgResultsCount:
+          type: number
+          format: double
+          description: Numero medio di cantine trovate per questa ricerca
+        lastSearchedAt:
+          type: string
+          format: date-time
+
+    MenuItemClickStat:
+      type: object
+      required: [ menuItemId, menuItemName, kind, standId, standNumber, standName, clickCount ]
+      properties:
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        clickCount:
+          type: integer
+          format: int64
+
+    StandClickStat:
+      type: object
+      required: [ standId, standNumber, standName, interactionCount ]
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        interactionCount:
+          type: integer
+          format: int64
+
+    StandAnalyticsSummary:
+      type: object
+      required:
+        - totalSearches
+        - totalInteractions
+        - topSearchedQueries
+        - zeroResultQueries
+        - topClickedMenuItems
+        - topClickedStands
+      properties:
+        totalSearches:
+          type: integer
+          format: int64
+        totalInteractions:
+          type: integer
+          format: int64
+        topSearchedQueries:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchQueryStat'
+        zeroResultQueries:
+          type: array
+          description: Ricerche che non hanno prodotto risultati (piatti desiderati dagli utenti ma assenti)
+          items:
+            $ref: '#/components/schemas/SearchQueryStat'
+        topClickedMenuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItemClickStat'
+        topClickedStands:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandClickStat'
+
+    ReviewTargetType:
+      type: string
+      enum:
+        - STAND
+        - MENU_ITEM
+        - EVENT
+
+    ReviewStatus:
+      type: string
+      enum:
+        - PENDING
+        - APPROVED
+        - REJECTED
+
+    FestivalReview:
+      type: object
+      required:
+        - id
+        - targetType
+        - targetId
+        - targetName
+        - authorUserId
+        - authorUsername
+        - rating
+        - comment
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        targetType:
+          $ref: '#/components/schemas/ReviewTargetType'
+        targetId:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        targetName:
+          type: string
+        authorUserId:
+          type: string
+        authorUsername:
+          type: string
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        moderatedBy:
+          type: string
+        moderationNote:
+          type: string
+        moderatedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    FestivalReviewCreate:
+      type: object
+      required: [ targetType, targetId, rating, comment ]
+      properties:
+        targetType:
+          $ref: '#/components/schemas/ReviewTargetType'
+        targetId:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        targetName:
+          type: string
+          maxLength: 200
+        authorUsername:
+          type: string
+          maxLength: 120
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          minLength: 2
+          maxLength: 1000
+
+    FestivalReviewModeration:
+      type: object
+      required: [ status ]
+      properties:
+        status:
+          $ref: '#/components/schemas/ReviewStatus'
+        moderationNote:
+          type: string
+          maxLength: 500
+
+    KeypadStationRole:
+      type: string
+      enum:
+        - CASHIER
+        - KITCHEN
+        - DELIVERY
+
+    StandStaffRole:
+      type: string
+      enum:
+        - OWNER
+        - CASHIER
+        - KITCHEN
+        - DELIVERY
+        - VIEWER
+
+    DeliveryLedState:
+      type: string
+      enum:
+        - 'OFF'
+        - 'BLINKING'
+        - 'SOLID'
+
+    StandOrderStatus:
+      type: string
+      enum:
+        - IN_PROGRESS
+        - READY
+        - DELIVERED
+        - CANCELLED
+
+    AccessibleKeypadStand:
+      type: object
+      required:
+        - standId
+        - standNumber
+        - standName
+        - permissions
+        - activeOrdersCount
+        - currentServingOrderNumber
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffRole'
+        activeOrdersCount:
+          type: integer
+        currentServingOrderNumber:
+          type: integer
+
+    StandKeypadSlotView:
+      type: object
+      required:
+        - slotNumber
+        - availablePlates
+        - pendingToCookCount
+        - currentDeliveryOrderRequiredCount
+        - currentDeliveryOrderCookedCount
+        - currentDeliveryOrderDeliveredCount
+        - kitchenLedOn
+        - deliveryLedState
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        availablePlates:
+          type: integer
+        pendingToCookCount:
+          type: integer
+          description: Porzioni totali da cucinare in tutta la coda per questo slot
+        currentDeliveryOrderRequiredCount:
+          type: integer
+          description: Porzioni richieste di questo slot nell'ordine corrente in uscita al bancone
+        currentDeliveryOrderCookedCount:
+          type: integer
+          description: Porzioni già pronte dalla cucina per questo slot nell'ordine corrente in uscita
+        currentDeliveryOrderDeliveredCount:
+          type: integer
+          description: Porzioni già messe sul vassoio dal consegnatore per questo slot nell'ordine corrente
+        kitchenLedOn:
+          type: boolean
+          description: LED Cucina acceso se pendingToCookCount > 0
+        deliveryLedState:
+          $ref: '#/components/schemas/DeliveryLedState'
+
+    StandOrderItemView:
+      type: object
+      required:
+        - id
+        - slotNumber
+        - menuItemName
+        - kind
+        - orderedQuantity
+        - cookedQuantity
+        - deliveredQuantity
+      properties:
+        id:
+          type: string
+          format: uuid
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+        menuItemName:
+          type: string
+        kind:
+          $ref: '#/components/schemas/MenuKind'
+        orderedQuantity:
+          type: integer
+        cookedQuantity:
+          type: integer
+        deliveredQuantity:
+          type: integer
+
+    StandOrderView:
+      type: object
+      required:
+        - id
+        - standId
+        - orderNumber
+        - status
+        - createdAt
+        - items
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        orderNumber:
+          type: integer
+        status:
+          $ref: '#/components/schemas/StandOrderStatus'
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        readyAt:
+          type: string
+          format: date-time
+        deliveredAt:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderItemView'
+
+    StandStaffPermissionView:
+      type: object
+      required:
+        - id
+        - standId
+        - username
+        - permission
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        standId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        permission:
+          $ref: '#/components/schemas/StandStaffRole'
+        grantedBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    StandKeypadState:
+      type: object
+      required:
+        - standId
+        - standNumber
+        - standName
+        - nextOrderNumber
+        - lastIssuedOrderNumber
+        - oldestKitchenOrderNumber
+        - currentDeliveryOrderNumber
+        - lastDeliveredOrderNumber
+        - activeOrdersCount
+        - totalPendingKitchenPortions
+        - userPermissions
+        - slots
+        - activeOrders
+        - recentDeliveredOrders
+        - staffPermissions
+      properties:
+        standId:
+          type: string
+          format: uuid
+        standNumber:
+          type: integer
+        standName:
+          type: string
+        deviceToken:
+          type: string
+          description: Token hardware per le 3 ESP32 (visibile solo a OWNER o ADMIN)
+        nextOrderNumber:
+          type: integer
+        lastIssuedOrderNumber:
+          type: integer
+          description: Display TM1637 Cassa — Ultimo numero d'ordine emesso (0 se nessuno)
+        oldestKitchenOrderNumber:
+          type: integer
+          description: Display 1 TM1637 Cucina — Numero ordine più vecchio con piatti da cucinare (0 se nessuno)
+        currentDeliveryOrderNumber:
+          type: integer
+          description: Display 1 TM1637 Consegna — Numero dell'ordine corrente da comporre e servire (0 se coda vuota)
+        lastDeliveredOrderNumber:
+          type: integer
+          description: Display 2 TM1637 Consegna — Ultimo ordine completato e consegnato
+        activeOrdersCount:
+          type: integer
+        totalPendingKitchenPortions:
+          type: integer
+          description: Display 2 TM1637 Cucina — Totale piatti caldi ancora da preparare in coda
+        lastCashierSeenAt:
+          type: string
+          format: date-time
+        lastKitchenSeenAt:
+          type: string
+          format: date-time
+        lastDeliverySeenAt:
+          type: string
+          format: date-time
+        userPermissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffRole'
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandKeypadSlotView'
+        activeOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderView'
+        recentDeliveredOrders:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandOrderView'
+        staffPermissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandStaffPermissionView'
+
+    StandKeypadSlotAssignment:
+      type: object
+      required: [ slotNumber ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        menuItemId:
+          type: string
+          format: uuid
+
+    StandKeypadSlotsUpdate:
+      type: object
+      required: [ slots ]
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/StandKeypadSlotAssignment'
+        regenerateDeviceToken:
+          type: boolean
+          default: false
+
+    StandStaffPermissionCreate:
+      type: object
+      required: [ username, permission ]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 120
+        permission:
+          $ref: '#/components/schemas/StandStaffRole'
+
+    StandKeypadOrderItemInput:
+      type: object
+      required: [ slotNumber, quantity ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 50
+
+    StandKeypadOrderCreate:
+      type: object
+      required: [ items ]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/StandKeypadOrderItemInput'
+
+    StandKeypadSlotPress:
+      type: object
+      required: [ slotNumber ]
+      properties:
+        slotNumber:
+          type: integer
+          minimum: 1
+          maximum: 10
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 1
+
     Problem:
       type: object
       properties:
@@ -500,6 +1740,12 @@ components:
             $ref: '#/components/schemas/Problem'
     BadRequest:
       description: Richiesta non valida
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Permessi insufficienti per operare su questa postazione o cantina
       content:
         application/problem+json:
           schema:

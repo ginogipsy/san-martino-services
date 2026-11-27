@@ -80,7 +80,9 @@ public class AuthService {
                     token.getTokenType()
             );
         } catch (NotAuthorizedException _) {
-            throw new RuntimeException("Credenziali errate");
+            throw new RuntimeException("Username o password non corretti");
+        } catch (Exception _) {
+            throw new RuntimeException("Impossibile effettuare l'accesso. Verifica username e password.");
         }
     }
     public void logoutUser(String userId) {

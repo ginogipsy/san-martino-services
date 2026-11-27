@@ -2,17 +2,168 @@
   "id": "san-martino",
   "realm": "san-martino",
   "enabled": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "ADMIN",
+        "description": "Amministratore"
+      },
+      {
+        "name": "OWNER",
+        "description": "Proprietario di cantina"
+      },
+      {
+        "name": "COLLABORATOR",
+        "description": "Collaboratore di cantina"
+      },
+      {
+        "name": "MODERATOR",
+        "description": "Moderatore recensioni"
+      },
+      {
+        "name": "ROLE_STAND_OWNER",
+        "description": "Proprietario di cantina"
+      },
+      {
+        "name": "USER",
+        "description": "Utente app mobile"
+      }
+    ]
+  },
   "clients": [
     {
       "clientId": "admin-cli-wrapper",
       "enabled": true,
       "protocol": "openid-connect",
-      "publicClient": true,
+      "publicClient": false,
+      "secret": "YOUR_CLIENT_SECRET_PLACEHOLDER",
       "bearerOnly": false,
       "standardFlowEnabled": true,
       "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
       "redirectUris": ["http://localhost:4200/*", "http://localhost:4200/"],
       "webOrigins": ["http://localhost:4200"]
     }
-  ]
+  ],
+  "users": [
+    {
+      "username": "service-account-admin-cli-wrapper",
+      "enabled": true,
+      "serviceAccountClientId": "admin-cli-wrapper",
+      "clientRoles": {
+        "realm-management": [
+          "realm-admin",
+          "manage-users",
+          "view-users",
+          "query-users",
+          "manage-realm",
+          "view-realm"
+        ]
+      }
+    },
+    {
+      "username": "francesco-grossi",
+      "email": "francesco.grossi@sanmartino.local",
+      "firstName": "Francesco",
+      "lastName": "Grossi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER",
+        "ROLE_STAND_OWNER"
+      ]
+    },
+    {
+      "username": "maria-chiara",
+      "email": "maria.chiara@sanmartino.local",
+      "firstName": "Maria Chiara",
+      "lastName": "Rossi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "cuoco-mario",
+      "email": "cuoco.mario@sanmartino.local",
+      "firstName": "Mario",
+      "lastName": "Bianchi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "scricci",
+      "email": "scricci@sanmartino.local",
+      "firstName": "Scricci",
+      "lastName": "Verdi",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    },
+    {
+      "username": "lisa-la",
+      "email": "lisa.la@sanmartino.local",
+      "firstName": "Lisa",
+      "lastName": "La",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "sanmartino2026",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "USER"
+      ]
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255},\"username-prohibited-characters\":{},\"up-username-not-idn-homograph\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{},\"length\":{\"max\":255}},\"required\":{\"roles\":[\"user\"]},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"validations\":{\"length\":{\"max\":255},\"person-name-prohibited-characters\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]},\"multivalued\":false}],\"groups\":[{\"name\":\"user-metadata\",\"displayHeader\":\"User metadata\",\"displayDescription\":\"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
 }

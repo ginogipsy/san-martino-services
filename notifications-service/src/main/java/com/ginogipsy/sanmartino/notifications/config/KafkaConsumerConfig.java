@@ -65,6 +65,7 @@ public class KafkaConsumerConfig {
         // non arriverebbe mai nell'MDC del listener. ObjectProvider perché l'interceptor
         // non esiste se l'osservabilità è disattivata (sanmartino.observability.enabled).
         correlationInterceptor.ifAvailable(interceptor -> factory.setRecordInterceptor(retyped(interceptor)));
+        factory.getContainerProperties().setObservationEnabled(true);
         return factory;
     }
 

@@ -45,6 +45,7 @@
         <testcontainers.version>1.21.4</testcontainers.version>
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-boot.version>4.0.6</spring-boot.version>
+        <datasource-micrometer.version>2.2.0</datasource-micrometer.version>
 
         <!-- Nome delle immagini OCI: lo usano Dockerfile e workflow (docker.image.prefix) -->
         <docker.image.registry>ghcr.io</docker.image.registry>
@@ -59,6 +60,13 @@
                 <groupId>${project.groupId}</groupId>
                 <artifactId>common-observability</artifactId>
                 <version>${revision}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.ttddyy.observation</groupId>
+                <artifactId>datasource-micrometer-bom</artifactId>
+                <version>${datasource-micrometer.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
             <dependency>
                 <groupId>org.openapitools</groupId>

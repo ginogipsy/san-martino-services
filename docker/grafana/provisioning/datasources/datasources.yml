@@ -1,5 +1,6 @@
-# Data source pre-configurate: all'avvio Grafana ha già Prometheus e Loki,
-# senza passare dalla UI. Gli uid sono fissati perché le dashboard li citano.
+# Data source pre-configurate: all'avvio Grafana ha già Prometheus, Loki e Tempo,
+# senza passare dalla UI. Gli uid sono fissati perché le dashboard e le correlazioni
+# tra log e tracce li citano.
 apiVersion: 1
 
 datasources:
@@ -23,3 +24,39 @@ datasources:
     editable: false
     jsonData:
       maxLines: 1000
+      # Estrae traceId dalle righe JSON (ECS) e aggiunge il bottone diretto verso Tempo.
+      derivedFields:
+        - datasourceUid: tempo
+          matcherRegex: '"traceId":"([a-f0-9]+)"'
+          name: TraceID
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace in Tempo"
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: "-1m"
+        spanEndTimeShift: "1m"
+        filterByTraceID: false
+        filterBySpanID: false
+        customQuery: true
+        query: '{service="$${__span.tags["service.name"]}"} | json | traceId="$${__trace.traceId}"'
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-5m"
+        spanEndTimeShift: "5m"
+        tags:
+          - key: service.name
+            value: application
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: loki

@@ -27,11 +27,11 @@ Monorepo Maven multi-modulo con approccio **API-First** (OpenAPI Generator) e ar
 * `saga-orchestrator`: Orchestrazione saghe distribuite per transazioni asincrone su Kafka (PostgreSQL).
 * `notifications-service`: Consumer di eventi da topic Kafka (`sanmartino.saga.events`) con push via Firebase Cloud Messaging (FCM).
 * `audit-service`: Tracciamento e audit trail eventi di business via Kafka (`sanmartino.audit.events`), con persistenza PostgreSQL e API protetta `ROLE_ADMIN`.
-* `common-observability`: Modulo AOP condiviso (aspect di logging, correlation ID in MDC, log JSON ECS, metriche Micrometer, aspect `@Auditable` per emissione audit).
+* `common-observability`: Modulo AOP condiviso (aspect di logging, correlation ID in MDC, tracing distribuito Micrometer/OpenTelemetry OTLP + JDBC proxy, log JSON ECS, metriche Micrometer, aspect `@Auditable` per emissione audit).
 
 ### Comandi Backend
 ```bash
-docker compose up -d                              # Avvia solo infra locale (Vault, DB, Kafka, Keycloak); le app Java sono su profilo 'apps'
+docker compose up -d                              # Avvia solo infra locale (Vault, DB, Kafka, Keycloak, Grafana/Loki/Prometheus/Tempo); le app Java sono su profilo 'apps'
 ./mvnw clean verify                               # Build e test dell'intero reactor
 ./mvnw -pl :<service> -am -DskipTests package     # Compilazione di un singolo modulo
 docker build --build-arg SERVICE=<service> -t ghcr.io/ginogipsy/sanmartino/<service>:dev . # Build immagine OCI
@@ -95,10 +95,10 @@ Applicazione mobile nativa per i visitatori dell'evento.
 La configurazione Kubernetes risiede in `san-martino-services/k8s/` ed è strutturata in:
 * `k8s/base/`: Namespace `sanmartino` (PSA `restricted`), Deployment e Service per le 7 app, Ingress Traefik.
 * `k8s/components/`:
-  * `infra-local`: 5 PostgreSQL 17-alpine + Kafka KRaft.
+  * `infra-local`: 6 PostgreSQL 17-alpine + Kafka KRaft.
   * `keycloak`: Keycloak 26.8.2 con realm export.
   * `vault-dev` / `vault-k8s-auth`: Vault dev con sidecar seed in locale; autenticazione nativa con ServiceAccount token proiettato in cloud.
-  * `observability`: Prometheus v3.2 (service discovery su pod), Loki 3.4, Grafana 11.6, Grafana Alloy v1.21 (Deployment, no hostPath).
+  * `observability`: Prometheus v3.2 (service discovery su pod), Loki 3.4, Tempo 2.7 (tracing OTLP), Grafana 11.6, Grafana Alloy v1.21 (Deployment, no hostPath).
 * `k8s/overlays/local/`: Configurazione per cluster locale Kind (`sanmartino.local`).
 * `k8s/overlays/cloud/`: Configurazione per cloud reale (cert-manager TLS, HPA, PDB, repliche, database/Kafka gestiti).
 

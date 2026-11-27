@@ -45,6 +45,8 @@ sanmartino:
 
 spring.kafka:
   bootstrap-servers: ${KAFKA_BOOTSTRAP} # Verrà da Vault o variabile d'ambiente
+  template:
+    observation-enabled: true
   producer:
     key-serializer: org.apache.kafka.common.serialization.StringSerializer
     value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -52,6 +54,14 @@ spring.kafka:
       spring.json.add.type.headers: false
 
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
   metrics:
     tags:
       # Label comune a tutte le metriche: in Prometheus/Grafana distingue i servizi
@@ -81,9 +91,9 @@ logging:
   level:
     root: INFO
     com.ginogipsy.sanmartino: DEBUG
-  # Correlation id anche sulla console, dove il formato non e' JSON.
+  # TraceId, SpanId e correlationId anche sulla console, dove il formato non e' JSON.
   pattern:
-    level: "%5p [${spring.application.name},%X{correlationId:-}]"
+    level: "%5p [${spring.application.name},%X{traceId:-},%X{spanId:-},%X{correlationId:-}]"
   # File di log per servizio: e' la sorgente che Promtail spedisce a Loki.
   # LOG_DIR e' relativo alla working directory del processo (IntelliJ usa la
   # cartella del modulo, `mvnw spring-boot:run` la stessa).

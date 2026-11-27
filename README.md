@@ -10,7 +10,7 @@ Monorepo Maven multi-module per il backend di **"Le cantine di San Martino"** (A
 - API-first con OpenAPI 3 + openapi-generator
 - Build immagini via `Dockerfile` multi-stage (Temurin 25 LTS) → GHCR
 - Testing: JUnit 5 + Testcontainers + MockMvc
-- Observability: aspect AOP + log JSON (ECS) → Loki, metriche Actuator → Prometheus, UI Grafana
+- Observability: aspect AOP + log JSON (ECS) → Loki, metriche Actuator → Prometheus, tracing distribuito OpenTelemetry (OTLP) → Tempo, UI Grafana
 
 ## Topologia target
 
@@ -22,11 +22,11 @@ gateway (Spring Cloud Gateway + Resilience4j)
   ├─→ saga-orchestrator (Postgres)
   ├─→ audit-service (Postgres)
   └─→ notifications-service (Kafka consumer + FCM)
-infra: Keycloak • Kafka • Grafana/Loki/Prometheus (Tempo: da fare)
+infra: Keycloak • Kafka • Grafana / Loki / Prometheus / Tempo
 ```
 
 Tutti i servizi dipendono da `common-observability`, la libreria condivisa con l'aspect di
-logging, correlation id e audit logging AOP (`@Auditable`) — vedi [docs/observability.md](docs/observability.md) e [docs/audit-logging.md](docs/audit-logging.md).
+logging, correlation id, tracing distribuito OpenTelemetry e audit logging AOP (`@Auditable`) — vedi [docs/observability.md](docs/observability.md) e [docs/audit-logging.md](docs/audit-logging.md).
 
 ## Stato attuale
 
