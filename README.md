@@ -123,7 +123,7 @@ Questo repository è stato configurato per essere mostrato in un portfolio pubbl
 san-martino-services/
 ├── pom.xml                  parent BOM + plugin config centralizzata
 ├── CLAUDE.md                istruzioni operative per agenti
-├── qodana.yaml              profilo Qodana + bootstrap generate-sources
+├── config/spotbugs-exclude.xml filtri di esclusione per analisi statica SpotBugs
 ├── api/                     OpenAPI spec — fonte di verità dei contratti
 │   ├── events-api.yaml
 │   ├── sagas-api.yaml
@@ -137,7 +137,9 @@ san-martino-services/
 │   └── api/                 reference OpenAPI GENERATO (redocly + prettier)
 ├── .github/workflows/
 │   ├── ci-cd.yml            build, test, immagini OCI, GHCR, docs
-│   └── qodana_code_quality.yml
+│   ├── release.yml          Smart Versioning, tag, GitHub Release e bump develop
+│   ├── deploy.yml           pubblicazione immagini manuale/automatica
+│   └── code-quality.yml     analisi statica gratuita SpotBugs + PMD (JDK 25)
 ├── docker-compose.yml       dev infra (Postgres, Kafka, Keycloak, Vault, osservabilità)
 ├── docker/                  config dello stack: prometheus/, loki/, promtail/, grafana/
 ├── common-observability/    libreria condivisa: aspect di logging + correlation id

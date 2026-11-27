@@ -11,12 +11,12 @@
 
 Due workflow in `.github/workflows/`:
 
-| File | Scopo |
-|---|---|
-| `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI |
-| `release.yml` | Tag, GitHub Release, Version Bump (Maven) |
-| `deploy.yml` | Pubblicazione manuale/automatica delle immagini su registry |
-| `qodana_code_quality.yml` | analisi statica JetBrains Qodana |
+| File               | Scopo                                                                  |
+|--------------------|------------------------------------------------------------------------|
+| `ci-cd.yml`        | build, test, immagini OCI, publish su GHCR, docs OpenAPI               |
+| `release.yml`      | Tag, GitHub Release, Version Bump (Maven)                              |
+| `deploy.yml`       | Pubblicazione manuale/automatica delle immagini su registry            |
+| `code-quality.yml` | analisi statica gratuita SpotBugs + PMD su JDK 25 (zero token esterni) |
 
 ## Allineamento a git flow
 
@@ -134,17 +134,18 @@ Doppia protezione contro la build ricorsiva innescata dal commit del bot:
 1. `docs/**` **non** è nei `paths` di trigger → un commit di sole docs non riattiva il workflow.
 2. Il messaggio di commit contiene `[skip ci]`.
 
-## Job Qodana
+## Analisi Statica Gratuita (`code-quality.yml`)
 
-Esegue un bootstrap prima dell'analisi:
+Esegue su JDK 25 (`temurin`) l'analisi statica gratuita tramite **SpotBugs** (`spotbugs-maven-plugin`) e **PMD**
+(`maven-pmd-plugin`) senza necessità di alcun token o servizio esterno:
 
-```yaml
-bootstrap: ./mvnw -B -ntp generate-sources
+```bash
+./mvnw test-compile pmd:pmd spotbugs:spotbugs
 ```
 
-Necessario: i controller implementano le interfacce prodotte da `openapi-generator`, che `.gitignore` esclude (`**/generated-sources/openapi/`). Senza questo step Qodana non risolve quei simboli e riporta centinaia di falsi positivi.
-
-Richiede il secret **`QODANA_TOKEN`** nelle repository secrets.
+Le classi generate da `openapi-generator` (`**/api/generated/**`) sono escluse tramite configurazione in `pom.xml` e
+`config/spotbugs-exclude.xml`. Il riepilogo per modulo viene pubblicato nel Job Summary di GitHub Actions e i report
+completi (`pmd.html`, `spotbugsXml.xml`, `spotbugsSarif.json`) vengono caricati come artifact.
 
 ## Riprodurre la CI in locale
 

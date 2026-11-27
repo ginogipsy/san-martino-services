@@ -57,11 +57,13 @@ Sui branch di sviluppo (**`develop`**, **`feature/*`**, **`release/*`**), la pip
 4. Clicca su **Approve** (per l'environment `san-martino-registry`).
 5. **Risultato**: Le immagini verranno pubblicate con il **nome del branch** (es. `feature-008-permessi`), pronte per essere scaricate su una VM di test.
 
-## 🧪 Qualità del Codice (Qodana)
+## 🧪 Qualità del Codice (SpotBugs & PMD)
 
-Ogni commit ed ogni Pull Request viene analizzata automaticamente da **JetBrains Qodana**.
-- Il report è consultabile nella tab **Checks** della Pull Request.
-- Assicuratevi che non vengano introdotti nuovi "Critical" o "High" issues prima del merge.
+Ogni commit ed ogni Pull Request viene analizzata gratuitamente da **SpotBugs** e **PMD**
+(`.github/workflows/code-quality.yml`, compatibile con Java 25 e senza necessità di token esterni).
+
+- Il riepilogo per modulo viene pubblicato direttamente nel **Job Summary** e nelle **Annotations** della Pull Request.
+- I report completi (`pmd.html`, `spotbugsXml.xml`, `spotbugsSarif.json`) sono scaricabili come artifact della run.
 
 ---
 
