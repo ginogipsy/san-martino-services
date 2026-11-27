@@ -22,12 +22,16 @@ Il sistema è composto da tre repository locali interconnessi:
 Monorepo Maven multi-modulo con approccio **API-First** (OpenAPI Generator) e architettura distribuita:
 * `gateway`: Spring Cloud Gateway MVC (routing, circuit breaker Resilience4j, iniezione correlation ID).
 * `auth-service`: Autenticazione e gestione utenti, integrato con Keycloak 26.8.2 e PostgreSQL.
-* `events-service`: Gestione eventi locali, notifiche e anagrafica (PostgreSQL).
-* `stands-service`: Gestione delle cantine gastronomiche e disponibilità prodotti (PostgreSQL).
+* `events-service`: Gestione edizioni della festa (`UPCOMING` / `PAST`) e seed storico (PostgreSQL).
+* `stands-service`: Gestione cantine multi-edizione (`stand_event_participations`), menu per anno con continuità storica
+  delle recensioni, ricerca intelligente (fuzzy + sinonimi + analytics), moderazione recensioni, preferiti utente,
+  permessi staff e coda ordini live per pulsantiera IoT a 3 postazioni (PostgreSQL).
 * `saga-orchestrator`: Orchestrazione saghe distribuite per transazioni asincrone su Kafka (PostgreSQL).
 * `notifications-service`: Consumer di eventi da topic Kafka (`sanmartino.saga.events`) con push via Firebase Cloud Messaging (FCM).
 * `audit-service`: Tracciamento e audit trail eventi di business via Kafka (`sanmartino.audit.events`), con persistenza PostgreSQL e API protetta `ROLE_ADMIN`.
 * `common-observability`: Modulo AOP condiviso (aspect di logging, correlation ID in MDC, tracing distribuito Micrometer/OpenTelemetry OTLP + JDBC proxy, log JSON ECS, metriche Micrometer, aspect `@Auditable` per emissione audit).
+* `iot/esp32-stand-keypad`: Firmware Arduino/ESP32 per le pulsantiere fisiche di Cassa, Cucina e Consegna (5 display
+  TM1637 + 10 slot LED/pulsanti).
 
 ### Comandi Backend
 ```bash

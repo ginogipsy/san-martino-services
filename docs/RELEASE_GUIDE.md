@@ -70,10 +70,15 @@ Ogni commit ed ogni Pull Request viene analizzata gratuitamente da **SpotBugs** 
 ## 🤖 Cosa succede dietro le quinte?
 
 Ad ogni merge su `master`, il workflow di GitHub:
-1. Determina la versione corretta tramite **Smart Versioning**.
-2. Crea un **Tag Git** (es. `v0.1.0`).
-3. Crea una **GitHub Release**.
-4. **Aggiorna `develop`**: Usa `mvn versions:set` per impostare la versione successiva su `develop` e fa il push automatico.
+
+1. Determina la versione corretta tramite **Smart Versioning** (da branch `release/X.Y.Z`, etichette `major`/`minor` o
+   `<revision>` del `pom.xml`).
+2. Costruisce e pubblica su GHCR le immagini dei 7 microservizi con la versione risolta.
+3. Crea un **Tag Git** (es. `v2.1.0`) e la relativa **GitHub Release**.
+4. **Aggiorna `develop`**: Usa `mvn versions:set-property -Dproperty=revision` per impostare automaticamente la patch
+   successiva su `develop` e fa il push.
 
 > [!IMPORTANT]
-> **Configurazione Ambiente**: L'approvazione manuale funziona solo se è stato creato l'environment **`nexus`** nelle impostazioni del repository con la regola *Required reviewers* attiva.
+> **Configurazione Ambiente**: L'approvazione manuale dei deploy sui branch di sviluppo richiede che sia configurato
+l'environment **`san-martino-registry`** nelle impostazioni del repository (*Settings -> Environments*) con la regola
+*Required reviewers* attiva.
