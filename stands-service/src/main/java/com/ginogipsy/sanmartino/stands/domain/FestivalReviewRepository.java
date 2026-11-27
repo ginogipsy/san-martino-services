@@ -23,6 +23,19 @@ public interface FestivalReviewRepository extends JpaRepository<FestivalReviewEn
     );
 
     @Query("""
+            SELECT r FROM FestivalReviewEntity r
+            WHERE r.targetType = :targetType
+              AND r.targetId IN :targetIds
+              AND (:status IS NULL OR r.status = :status)
+            ORDER BY r.createdAt DESC
+            """)
+    List<FestivalReviewEntity> findFilteredByTargetIds(
+            @Param("targetType") ReviewTargetType targetType,
+            @Param("targetIds") java.util.Collection<UUID> targetIds,
+            @Param("status") ReviewStatus status
+    );
+
+    @Query("""
             SELECT r.targetId AS targetId,
                    AVG(r.rating) AS avgRating,
                    COUNT(r) AS reviewCount

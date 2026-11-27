@@ -33,7 +33,7 @@ public class StandMapper {
     }
 
     public StandEntity fromCreate(StandCreate dto) {
-        return new StandEntity(
+        StandEntity entity = new StandEntity(
                 null,
                 dto.getNumber(),
                 dto.getName(),
@@ -43,10 +43,14 @@ public class StandMapper {
                 dto.getLatitude(),
                 dto.getLongitude()
         );
+        if (dto.getEventId() != null) {
+            entity.setActiveEventId(dto.getEventId());
+        }
+        return entity;
     }
 
     public StandEntity fromUpdate(StandUpdate dto) {
-        return new StandEntity(
+        StandEntity entity = new StandEntity(
                 null,
                 dto.getNumber(),
                 dto.getName(),
@@ -56,6 +60,10 @@ public class StandMapper {
                 dto.getLatitude(),
                 dto.getLongitude()
         );
+        if (dto.getEventId() != null) {
+            entity.setActiveEventId(dto.getEventId());
+        }
+        return entity;
     }
 
     private static OffsetDateTime toOffsetDateTime(Instant instant) {
@@ -77,6 +85,8 @@ public class StandMapper {
                 entity.getLatitude(),
                 entity.getLongitude()
         );
+        dto.setEventId(entity.getActiveEventId());
+        dto.setParticipatingEventIds(extractParticipatingEventIds(entity));
         if (snap != null) {
             dto.setActiveOrdersCount(snap.activeOrdersCount());
             dto.setCurrentServingOrderNumber(snap.currentServingOrderNumber());
@@ -100,6 +110,8 @@ public class StandMapper {
                 owners,
                 items
         );
+        dto.setEventId(entity.getActiveEventId());
+        dto.setParticipatingEventIds(extractParticipatingEventIds(entity));
         StandKeypadService.StandQueueSnapshot snap = resolveQueueSnapshot(entity.getId());
         if (snap != null) {
             dto.setActiveOrdersCount(snap.activeOrdersCount());
@@ -108,6 +120,17 @@ public class StandMapper {
         }
         applyAuditing(entity, dto::setCreatedAt, dto::setUpdatedAt);
         return dto;
+    }
+
+    private List<UUID> extractParticipatingEventIds(StandEntity entity) {
+        if (entity.getParticipations() == null || entity.getParticipations().isEmpty()) {
+            return List.of(entity.getActiveEventId());
+        }
+        return entity.getParticipations().stream()
+                .map(com.ginogipsy.sanmartino.stands.domain.StandEventParticipationEntity::getEventId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
     }
 
     private StandKeypadService.StandQueueSnapshot resolveQueueSnapshot(UUID standId) {
@@ -317,6 +340,8 @@ public class StandMapper {
     public MenuItemEntity fromMenuItemCreate(MenuItemCreate dto) {
         return new MenuItemEntity(
                 null,
+                dto.getEventId(),
+                dto.getCanonicalItemId(),
                 dto.getName(),
                 dto.getDescription().getIt(),
                 dto.getDescription().getEn(),
@@ -339,7 +364,7 @@ public class StandMapper {
     }
 
     public MenuItem toMenuItem(MenuItemEntity entity) {
-        return new MenuItem(
+        MenuItem dto = new MenuItem(
                 entity.getId(),
                 entity.getStand().getId(),
                 entity.getName(),
@@ -348,6 +373,9 @@ public class StandMapper {
                 MenuKind.valueOf(entity.getKind().name()),
                 entity.getKeywords()
         );
+        dto.setEventId(entity.getEventId());
+        dto.setCanonicalItemId(entity.getCanonicalItemId());
+        return dto;
     }
 
     public StandOwnerEntity fromOwnerCreate(OwnerCreate dto) {

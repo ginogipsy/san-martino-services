@@ -27,17 +27,18 @@ public class MenuController implements MenuApi {
     }
 
     @Override
-    public ResponseEntity<List<MenuItem>> listMenuItems(UUID id, MenuKind kind) {
+    public ResponseEntity<List<MenuItem>> listMenuItems(UUID id, MenuKind kind, UUID eventId, Boolean allEditions) {
         com.ginogipsy.sanmartino.stands.domain.MenuKind domainKind = kind == null
                 ? null
                 : com.ginogipsy.sanmartino.stands.domain.MenuKind.valueOf(kind.getValue());
-        List<MenuItemEntity> items = service.listMenuItems(id, domainKind);
+        boolean includeAllEditions = Boolean.TRUE.equals(allEditions);
+        List<MenuItemEntity> items = service.listMenuItems(id, domainKind, eventId, includeAllEditions);
         return ResponseEntity.ok(items.stream().map(mapper::toMenuItem).toList());
     }
 
     @Override
-    public ResponseEntity<MenuItem> addMenuItem(UUID id, MenuItemCreate body) {
-        MenuItemEntity saved = service.addMenuItem(id, mapper.fromMenuItemCreate(body));
+    public ResponseEntity<MenuItem> addMenuItem(UUID id, MenuItemCreate body, UUID eventId) {
+        MenuItemEntity saved = service.addMenuItem(id, mapper.fromMenuItemCreate(body), eventId);
         return ResponseEntity
                 .created(URI.create("/v1/stands/" + id + "/menu-items/" + saved.getId()))
                 .body(mapper.toMenuItem(saved));

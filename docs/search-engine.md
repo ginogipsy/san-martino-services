@@ -58,17 +58,19 @@ Le seguenti ottimizzazioni richiedono i dati dei moduli successivi della roadmap
 - [x] **COMPLETATO (`#058` — Step 5 — Cantine Preferite / "Dove voglio andare")**:
     - Persistenza e sincronizzazione delle cantine preferite dell'utente (`user_favorite_stands`,
       `GET/PUT/DELETE /v1/stands/favorites`) con supporto offline-first e filtro dedicato sull'app Android.
-- [ ] **TODO (Partecipazione Multi-Evento delle Cantine, Menu per Edizione & Consultazione Storica in Sola Lettura)**:
-    - **Modello Multi-Edizione**: consentire a una stessa cantina (identità storica permanente) di partecipare a più
-      eventi/edizioni annuali, potendo configurare per ciascun evento dettagli specifici (es. numero piazzola,
-      posizione, descrizione dell'edizione) e un menu dedicato di piatti e vini.
-    - **Continuità Storica delle Recensioni**: fare in modo che le recensioni della cantina si perpetuino attraverso le
+- [x] **COMPLETATO (`#060` — Partecipazione Multi-Evento delle Cantine, Menu per Edizione & Consultazione Storica in
+  Sola Lettura)**:
+    - **Modello Multi-Edizione**: consentito a una stessa cantina (identità storica permanente) di partecipare a più
+      eventi/edizioni annuali (`stand_event_participations`), configurando per ciascun evento dettagli specifici (numero
+      piazzola,
+      posizione GPS, descrizione dell'edizione) e un menu dedicato di piatti e vini (`menu_items.event_id`).
+    - **Continuità Storica delle Recensioni**: le recensioni della cantina si perpetuano attraverso le
       diverse edizioni, così come le recensioni di piatti e vini quando la cantina ripropone gli stessi piatti/vini in
-      edizioni successive (catalogo piatti/vini riutilizzabile della cantina).
-    - **Navigazione Edizioni Passate in Sola Lettura sull'App**: rendere esplorabili sull'app mobile anche tutti gli
+      edizioni successive (`menu_items.canonical_item_id` e aggregazione cross-edizione in `StandService`).
+    - **Navigazione Edizioni Passate in Sola Lettura sull'App**: resi esplorabili sull'app mobile anche tutti gli
       eventi passati con la stessa identica struttura dell'evento corrente (elenco cantine partecipanti a
-      quell'edizione → menu piatti e vini di quell'anno → recensioni storiche di cantine, piatti e vini), ma in modalità
-      **sola lettura** (senza possibilità di inviare nuove recensioni o modifiche su edizioni concluse).
+      quell'edizione → menu piatti e vini di quell'anno → recensioni storiche di cantine, piatti e vini), in modalità
+      **sola lettura** (`readOnly = true`, senza possibilità di inviare nuove recensioni su edizioni concluse).
 - [ ] **TODO (Perfezionamento Recensioni — Regola "Ultimo Commento Approvato per Utente")**:
     - Mantenere lo storico completo di tutti i commenti inviati su DB (`festival_reviews`), ma fare in modo che per
       ciascun autore (`author_user_id` / `author_username`) e target (`target_type`, `target_id`) **solo l'ultima

@@ -1,13 +1,6 @@
 package com.ginogipsy.sanmartino.stands.domain;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.FetchType;
-import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -61,6 +54,12 @@ public class StandEntity {
     @OneToMany(mappedBy = "stand", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<MenuItemEntity> menuItems = new ArrayList<>();
 
+    @OneToMany(mappedBy = "stand", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private List<StandEventParticipationEntity> participations = new ArrayList<>();
+
+    @Transient
+    private UUID activeEventId = MenuItemEntity.DEFAULT_EVENT_ID;
+
     protected StandEntity() {
         // JPA
     }
@@ -105,6 +104,16 @@ public class StandEntity {
         item.setStand(null);
     }
 
+    public void addParticipation(StandEventParticipationEntity participation) {
+        participations.add(participation);
+        participation.setStand(this);
+    }
+
+    public void removeParticipation(StandEventParticipationEntity participation) {
+        participations.remove(participation);
+        participation.setStand(null);
+    }
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
@@ -134,4 +143,16 @@ public class StandEntity {
 
     public List<StandOwnerEntity> getOwners() { return owners; }
     public List<MenuItemEntity> getMenuItems() { return menuItems; }
+
+    public List<StandEventParticipationEntity> getParticipations() {
+        return participations;
+    }
+
+    public UUID getActiveEventId() {
+        return activeEventId != null ? activeEventId : MenuItemEntity.DEFAULT_EVENT_ID;
+    }
+
+    public void setActiveEventId(UUID activeEventId) {
+        this.activeEventId = activeEventId != null ? activeEventId : MenuItemEntity.DEFAULT_EVENT_ID;
+    }
 }
