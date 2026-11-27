@@ -14,9 +14,13 @@
 # ---------------------------------------------------------------------------
 
 ARG JAVA_VERSION=25
+ARG MAVEN_VERSION=3.9.11
 
 # --- Stage 1: build --------------------------------------------------------
-FROM eclipse-temurin:${JAVA_VERSION}-jdk AS build
+# Usiamo l'immagine ufficiale con Maven 3.9.11 preinstallato sopra Temurin 25:
+# evita che 7+ job paralleli in CI scarichino il binario di Maven da Maven Central
+# incappando in HTTP 429 (Too Many Requests).
+FROM maven:${MAVEN_VERSION}-eclipse-temurin-${JAVA_VERSION} AS build
 ARG SERVICE
 ARG REVISION=""
 RUN test -n "${SERVICE}" || (echo "--build-arg SERVICE=<modulo> è obbligatorio" >&2; exit 1)
@@ -24,9 +28,12 @@ WORKDIR /workspace
 
 COPY . .
 # ~/.m2 in una cache mount: le dipendenze sopravvivono fra una build e l'altra
-# (e fra i sei servizi) senza finire in un layer dell'immagine.
+# (e fra i sette servizi) senza finire in un layer dell'immagine.
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw -B -ntp -pl ":${SERVICE}" -am -DskipTests ${REVISION:+-Drevision=${REVISION}} package
+    mvn -B -ntp \
+        -Dhttp.keepAlive=false \
+        -Dmaven.wagon.http.retryHandler.count=5 \
+        -pl ":${SERVICE}" -am -DskipTests ${REVISION:+-Drevision=${REVISION}} package
 
 # Il jar estratto a layer: dipendenze, loader e codice del servizio diventano
 # layer separati, e un cambio di codice non ritrasferisce le dipendenze.

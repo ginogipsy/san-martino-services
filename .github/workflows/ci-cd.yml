@@ -325,11 +325,14 @@ jobs:
         run: kubectl kustomize k8s/overlays/cloud/cluster > /dev/null
 
   # =========================================================================
-  # 3. IMMAGINI OCI — un job per servizio, in parallelo (Dockerfile)
+  # 3. IMMAGINI OCI — verifica build Dockerfile su PR e branch di sviluppo.
+  #    Su push a `master` o tag `v*` viene saltato perché `deploy` ricostruisce
+  #    e pubblica già tutte e 7 le immagini (evitando 14 build Docker parallele).
   # =========================================================================
   build-images:
     name: Image · ${{ matrix.service }}
     needs: [build-test, validate-k8s]
+    if: "!(github.event_name == 'push' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')))"
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -558,8 +561,8 @@ jobs:
   # =========================================================================
   release:
     name: Release
-    needs: [build-test, build-images]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    needs: [ build-test, validate-k8s, deploy ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.deploy.result == 'success'
     permissions:
       contents: write        # tag, GitHub Release, commit del bump su develop
       pull-requests: read    # per risalire alla PR mergiata (squash merge)
@@ -568,28 +571,18 @@ jobs:
       version: ${{ needs.build-test.outputs.version }}
 
   # =========================================================================
-  # 5. DEPLOY — il "terzo pallino": pubblicazione a click delle immagini di
-  #    QUESTO commit su un registry configurabile.
-  #
-  # `needs: [build-test, build-images]` riproduce la semantica del manual job
-  # di GitLab: il pallino è premibile solo con i primi due verdi. Il bottone
-  # vero e proprio nasce da `environment:` dentro deploy.yml — vedi lì il
-  # perché, e la nota sui required reviewers da configurare a mano.
-  #
-  # Solo su `push`, quindi su master/develop/release/*/hotfix/*. I feature/*
-  # arrivano qui come `pull_request` e sono esclusi di proposito: il ref di
-  # una PR è un merge commit sintetico che non esiste su nessun branch, e
-  # un'immagine costruita da lì non sarebbe riproducibile. Per quelli si usa
-  # il "Run workflow" di deploy.yml.
-  #
-  # Non è in `needs` di nessuno e non blocca niente: se nessuno approva, la
-  # run resta in attesa (come una pipeline "blocked" di GitLab) e si può
-  # cancellare.
+  # 5. DEPLOY — pubblicazione delle immagini OCI su registry (automatica su
+  #    master e tag v*, manuale con gate su develop/release/*/hotfix/*).
   # =========================================================================
   deploy:
     name: Deploy
-    needs: [build-test, build-images]
-    if: github.event_name == 'push'
+    needs: [ build-test, validate-k8s, build-images ]
+    if: >-
+      always()
+      && github.event_name == 'push'
+      && needs.build-test.result == 'success'
+      && needs.validate-k8s.result == 'success'
+      && (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     permissions:
       contents: read
       packages: write        # fallback GHCR con GITHUB_TOKEN
@@ -599,8 +592,8 @@ jobs:
     secrets: inherit
     uses: ./.github/workflows/deploy.yml
     with:
-      # Gli stessi valori con cui build-images ha taggato le immagini: una
-      # lettura sola del pom per tutta la run, non tre indipendenti.
+      # Gli stessi valori con cui build-test ha risolto la versione: una
+      # lettura sola per tutta la run.
       version: ${{ needs.build-test.outputs.version }}
       image_prefix: ${{ needs.build-test.outputs.image-prefix }}
       ref_name: ${{ github.ref_name }}
