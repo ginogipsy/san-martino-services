@@ -278,6 +278,7 @@ jobs:
             moving="$slug"
           fi
 
+          echo "version=${version}"                               >> "$GITHUB_OUTPUT"
           echo "built=${prefix}/${{ matrix.service }}:${version}" >> "$GITHUB_OUTPUT"
           echo "immutable=${version}-${slug}-${GITHUB_SHA::7}"    >> "$GITHUB_OUTPUT"
           echo "moving=$moving"                                   >> "$GITHUB_OUTPUT"
@@ -285,8 +286,9 @@ jobs:
       - name: Build OCI image (Dockerfile)
         env:
           BUILT: ${{ steps.tags.outputs.built }}
+          VERSION: ${{ steps.tags.outputs.version }}
         run: |
-          docker build --build-arg SERVICE=${{ matrix.service }} -t "$BUILT" .
+          docker build --build-arg SERVICE=${{ matrix.service }} --build-arg REVISION="${VERSION}" -t "$BUILT" .
 
       # -------------------------------------------------------------------
       # `latest` NON viene toccato: quel tag segue master ed è responsabilità

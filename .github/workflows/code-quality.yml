@@ -1,0 +1,156 @@
+name: Code Quality (SpotBugs & PMD)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+      - develop
+      - 'release/**'
+    paths:
+      - '**/*.java'
+      - '**/pom.xml'
+      - 'api/**/*.yaml'
+      - 'api/**/*.yml'
+      - 'config/**'
+      - '.github/workflows/code-quality.yml'
+  push:
+    branches:
+      - master
+      - develop
+      - 'release/**'
+      - 'hotfix/**'
+    paths:
+      - '**/*.java'
+      - '**/pom.xml'
+      - 'api/**/*.yaml'
+      - 'api/**/*.yml'
+      - 'config/**'
+      - '.github/workflows/code-quality.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  JAVA_VERSION: '25'
+  JAVA_DISTRIBUTION: 'temurin'
+  MAVEN_ARGS: '-B -ntp'
+
+jobs:
+  static-analysis:
+    name: SpotBugs & PMD (JDK 25)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Restore Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-quality-${{ hashFiles('**/pom.xml', '.mvn/wrapper/maven-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-quality-
+            ${{ runner.os }}-m2-
+
+      - name: Compile & Run PMD + SpotBugs
+        run: ./mvnw test-compile pmd:pmd spotbugs:spotbugs
+
+      - name: Summarize findings & emit annotations
+        run: |
+          python3 - <<'PY'
+          import glob, os, sys, xml.etree.ElementTree as ET
+
+          pmd_high = 0
+          pmd_other = 0
+          sb_high = 0
+          sb_other = 0
+          rows = []
+
+          for path in sorted(glob.glob("*/target/pmd.xml")):
+              module = path.split("/")[0]
+              tree = ET.parse(path)
+              root = tree.getroot()
+              mod_high = 0
+              mod_other = 0
+              for f in root.findall("{*}file"):
+                  fname = os.path.relpath(f.attrib.get("name", ""), os.getcwd())
+                  if "/generated-sources/" in fname or "/api/generated/" in fname:
+                      continue
+                  for v in f.findall("{*}violation"):
+                      prio = int(v.attrib.get("priority", "3"))
+                      rule = v.attrib.get("rule", "PMD")
+                      line = v.attrib.get("beginline", "1")
+                      msg = " ".join((v.text or "").split())
+                      if prio == 1:
+                          pmd_high += 1
+                          mod_high += 1
+                          print(f"::error file={fname},line={line},title=PMD ({rule})::{msg}")
+                      else:
+                          pmd_other += 1
+                          mod_other += 1
+              rows.append((module, "PMD", mod_high, mod_other))
+
+          for path in sorted(glob.glob("*/target/spotbugsXml.xml")):
+              module = path.split("/")[0]
+              tree = ET.parse(path)
+              root = tree.getroot()
+              mod_high = 0
+              mod_other = 0
+              for bug in root.findall("BugInstance"):
+                  prio = int(bug.attrib.get("priority", "2"))
+                  btype = bug.attrib.get("type", "SPOTBUGS")
+                  msg_el = bug.find("LongMessage")
+                  msg = msg_el.text.strip() if msg_el is not None and msg_el.text else btype
+                  src = bug.find("SourceLine")
+                  src_path = src.attrib.get("sourcepath", "") if src is not None else ""
+                  line = src.attrib.get("start", "1") if src is not None else "1"
+                  file_arg = f"{module}/src/main/java/{src_path}" if src_path else module
+                  if prio == 1:
+                      sb_high += 1
+                      mod_high += 1
+                      print(f"::warning file={file_arg},line={line},title=SpotBugs ({btype})::{msg}")
+                  else:
+                      sb_other += 1
+                      mod_other += 1
+              rows.append((module, "SpotBugs", mod_high, mod_other))
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as sf:
+                  sf.write("### 🔍 Analisi Statica Gratuita — SpotBugs & PMD\n\n")
+                  sf.write("| Modulo | Strumento | Priorità Alta (P1) | Avvisi Informativi |\n")
+                  sf.write("|---|---|---:|---:|\n")
+                  for mod, tool, h, o in rows:
+                      sf.write(f"| `{mod}` | {tool} | {h} | {o} |\n")
+                  sf.write(f"\n**Totale P1:** PMD `{pmd_high}`, SpotBugs `{sb_high}` — **Avvisi:** PMD `{pmd_other}`, SpotBugs `{sb_other}`\n")
+
+          print(f"Summary -> PMD P1={pmd_high} (other={pmd_other}), SpotBugs P1={sb_high} (other={sb_other})")
+          if pmd_high > 0:
+              sys.exit(1)
+          PY
+
+      - name: Upload Static Analysis Reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: static-analysis-reports
+          path: |
+            */target/pmd.xml
+            */target/site/pmd.html
+            */target/spotbugsXml.xml
+            */target/spotbugsSarif.json
+          retention-days: 14
+          if-no-files-found: ignore

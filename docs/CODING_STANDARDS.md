@@ -2,7 +2,10 @@
 
 Regole per chi scrive codice in questo repo, umani e agenti. Chi apre una PR è responsabile del rispetto di queste regole; l'analisi statica è una rete di sicurezza, non il primo controllo.
 
-> **Nota sugli strumenti.** In CI gira **Qodana** (ispezioni IntelliJ), non SonarQube. Le due famiglie di regole si sovrappongono ampiamente ma non coincidono: gli ID `java:SXXXX` citati qui sono i riferimenti SonarSource, usati perché sono la nomenclatura più diffusa e documentata ([rules.sonarsource.com](https://rules.sonarsource.com/java/)). Molte hanno un'ispezione IntelliJ equivalente. Se in futuro si vuole il vero motore Sonar, va aggiunto `sonar-maven-plugin` più un'istanza SonarQube o SonarCloud: **non è configurato oggi**.
+> **Nota sugli strumenti.** In CI girano **SpotBugs** e **PMD** (`.github/workflows/code-quality.yml`, gratuiti e senza
+> token esterni), non SonarQube. Gli ID `java:SXXXX` citati qui sono i riferimenti SonarSource, usati perché sono la
+> nomenclatura più diffusa e documentata ([rules.sonarsource.com](https://rules.sonarsource.com/java/)). Molte hanno una
+> regola PMD o SpotBugs equivalente.
 
 ---
 

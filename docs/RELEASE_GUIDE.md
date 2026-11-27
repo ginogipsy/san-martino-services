@@ -57,21 +57,28 @@ Sui branch di sviluppo (**`develop`**, **`feature/*`**, **`release/*`**), la pip
 4. Clicca su **Approve** (per l'environment `san-martino-registry`).
 5. **Risultato**: Le immagini verranno pubblicate con il **nome del branch** (es. `feature-008-permessi`), pronte per essere scaricate su una VM di test.
 
-## 🧪 Qualità del Codice (Qodana)
+## 🧪 Qualità del Codice (SpotBugs & PMD)
 
-Ogni commit ed ogni Pull Request viene analizzata automaticamente da **JetBrains Qodana**.
-- Il report è consultabile nella tab **Checks** della Pull Request.
-- Assicuratevi che non vengano introdotti nuovi "Critical" o "High" issues prima del merge.
+Ogni commit ed ogni Pull Request viene analizzata gratuitamente da **SpotBugs** e **PMD**
+(`.github/workflows/code-quality.yml`, compatibile con Java 25 e senza necessità di token esterni).
+
+- Il riepilogo per modulo viene pubblicato direttamente nel **Job Summary** e nelle **Annotations** della Pull Request.
+- I report completi (`pmd.html`, `spotbugsXml.xml`, `spotbugsSarif.json`) sono scaricabili come artifact della run.
 
 ---
 
 ## 🤖 Cosa succede dietro le quinte?
 
 Ad ogni merge su `master`, il workflow di GitHub:
-1. Determina la versione corretta tramite **Smart Versioning**.
-2. Crea un **Tag Git** (es. `v0.1.0`).
-3. Crea una **GitHub Release**.
-4. **Aggiorna `develop`**: Usa `mvn versions:set` per impostare la versione successiva su `develop` e fa il push automatico.
+
+1. Determina la versione corretta tramite **Smart Versioning** (da branch `release/X.Y.Z`, etichette `major`/`minor` o
+   `<revision>` del `pom.xml`).
+2. Costruisce e pubblica su GHCR le immagini dei 7 microservizi con la versione risolta.
+3. Crea un **Tag Git** (es. `v2.1.0`) e la relativa **GitHub Release**.
+4. **Aggiorna `develop`**: Usa `mvn versions:set-property -Dproperty=revision` per impostare automaticamente la patch
+   successiva su `develop` e fa il push.
 
 > [!IMPORTANT]
-> **Configurazione Ambiente**: L'approvazione manuale funziona solo se è stato creato l'environment **`nexus`** nelle impostazioni del repository con la regola *Required reviewers* attiva.
+> **Configurazione Ambiente**: L'approvazione manuale dei deploy sui branch di sviluppo richiede che sia configurato
+l'environment **`san-martino-registry`** nelle impostazioni del repository (*Settings -> Environments*) con la regola
+*Required reviewers* attiva.

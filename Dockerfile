@@ -18,6 +18,7 @@ ARG JAVA_VERSION=25
 # --- Stage 1: build --------------------------------------------------------
 FROM eclipse-temurin:${JAVA_VERSION}-jdk AS build
 ARG SERVICE
+ARG REVISION=""
 RUN test -n "${SERVICE}" || (echo "--build-arg SERVICE=<modulo> è obbligatorio" >&2; exit 1)
 WORKDIR /workspace
 
@@ -25,7 +26,7 @@ COPY . .
 # ~/.m2 in una cache mount: le dipendenze sopravvivono fra una build e l'altra
 # (e fra i sei servizi) senza finire in un layer dell'immagine.
 RUN --mount=type=cache,target=/root/.m2 \
-    ./mvnw -B -ntp -pl ":${SERVICE}" -am -DskipTests package
+    ./mvnw -B -ntp -pl ":${SERVICE}" -am -DskipTests ${REVISION:+-Drevision=${REVISION}} package
 
 # Il jar estratto a layer: dipendenze, loader e codice del servizio diventano
 # layer separati, e un cambio di codice non ritrasferisce le dipendenze.

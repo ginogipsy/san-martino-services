@@ -50,6 +50,7 @@ on:
       - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
+      - '.github/workflows/release.yml'
       # NB: 'docs/**' NON è nella lista — vedi job "docs" (anti-loop)
   pull_request:
     # Target ammessi da git flow: feature/bugfix → develop, release/hotfix → master,
@@ -75,13 +76,15 @@ on:
       - 'scripts/**'
       - '.github/workflows/ci-cd.yml'
       - '.github/workflows/deploy.yml'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
-# Su PR le run vecchie vengono annullate; sui branch git flow no (servono per
-# il push GHCR e per il commit automatico delle docs).
+# Su master e sui tag v* non annulliamo mai run in corso (push GHCR e release);
+# su PR, develop e release/* annulliamo le run precedenti (altrimenti il gate
+# manuale 'Approve deploy' blocca in coda tutti i push successivi su develop).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/') }}
 
 # Default restrittivo: ogni job alza solo i permessi che gli servono.
 permissions:
@@ -107,6 +110,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    permissions:
+      contents: read
+      pull-requests: read
+
     outputs:
       version: ${{ steps.pom.outputs.version }}
       image-prefix: ${{ steps.pom.outputs.image-prefix }}
@@ -114,6 +121,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -157,15 +166,70 @@ jobs:
           fi
           docker compose exec -T vault vault status -address=http://127.0.0.1:8200
 
-      - name: Resolve coordinates from parent pom
+      - name: Resolve coordinates (Smart Versioning + parent pom)
         id: pom
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          pom_version="$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)"
           prefix="$(./mvnw -q help:evaluate -Dexpression=docker.image.prefix -DforceStdout)"
+          version="$pom_version"
+          explicit_branch_version=""
+
+          # 1. Rileva branch sorgente (se siamo su release/* o hotfix/* oppure su merge in master)
+          branch=""
+          if [[ "${GITHUB_REF_NAME:-}" =~ ^(release|hotfix)/ ]]; then
+            branch="${GITHUB_REF_NAME}"
+          elif [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/master" ]; then
+            message="$(git log -1 --pretty=%B)"
+            pr_number="$(printf '%s' "$message" | grep -oP 'Merge pull request #\K[0-9]+' || true)"
+            branch="$(printf '%s' "$message" | grep -oP '^Merge pull request #[0-9]+ from [^/]+/\K\S+' || true)"
+            if [ -z "$branch" ]; then
+              branch="$(gh pr list --search "$GITHUB_SHA" --state merged --json headRefName -q '.[0].headRefName' 2>/dev/null || true)"
+            fi
+            if [ -z "$pr_number" ]; then
+              pr_number="$(gh pr list --search "$GITHUB_SHA" --state merged --json number -q '.[0].number' 2>/dev/null || true)"
+            fi
+          fi
+
+          # 2. Smart Versioning: priorità a release/X.Y.Z (o hotfix/X.Y.Z), poi label PR major/minor, altrimenti pom.xml
+          if [[ "$branch" =~ ^(release|hotfix)/v?([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[2]}"
+            explicit_branch_version="$version"
+            echo "Smart Versioning: versione estratta dal branch '${branch}' -> ${version}"
+          elif [ "${GITHUB_EVENT_NAME:-}" = "push" ] && [ "${GITHUB_REF:-}" = "refs/heads/master" ]; then
+            latest_tag="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -V | tail -1 || true)"
+            base_version="$pom_version"
+            if [ -n "$latest_tag" ]; then
+              base_version="$(printf '%s\n%s\n' "$pom_version" "$latest_tag" | sort -V | tail -1)"
+            fi
+            labels=""
+            if [ -n "${pr_number:-}" ]; then
+              labels="$(gh pr view "$pr_number" --json labels -q '.labels[].name' 2>/dev/null || true)"
+            fi
+            IFS=. read -r maj min pat <<< "$base_version"
+            if printf '%s\n' "$labels" | grep -iq '^major$'; then
+              version="$((maj + 1)).0.0"
+              echo "Smart Versioning: label 'major' rilevata -> ${version}"
+            elif printf '%s\n' "$labels" | grep -iq '^minor$'; then
+              version="${maj}.$((min + 1)).0"
+              echo "Smart Versioning: label 'minor' rilevata -> ${version}"
+            elif git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
+              # Se il tag della versione del pom esiste già (es. bump precedente non tirato),
+              # avanza automaticamente alla prima patch libera.
+              version="${maj}.${min}.$((pat + 1))"
+              while git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; do
+                IFS=. read -r maj min pat <<< "$version"
+                version="${maj}.${min}.$((pat + 1))"
+              done
+              echo "Smart Versioning: tag precedente già presente, avanzamento automatico -> ${version}"
+            fi
+          fi
+
           echo "version=$version"           >> "$GITHUB_OUTPUT"
           echo "image-prefix=$prefix"       >> "$GITHUB_OUTPUT"
-          echo "### 📦 \`$version\` — \`$prefix/<service>\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "### 📦 \`$version\` (pom: \`$pom_version\`) — \`$prefix/<service>\`" >> "$GITHUB_STEP_SUMMARY"
 
       # ---------------------------------------------------------------------
       # `verify` (non `install`): esegue surefire + failsafe senza sporcare
@@ -174,7 +238,7 @@ jobs:
       # sia per PostgreSQL sia per Kafka.
       # ---------------------------------------------------------------------
       - name: Build & test (full reactor)
-        run: ./mvnw clean verify
+        run: ./mvnw -Drevision="${{ steps.pom.outputs.version }}" clean verify
         env:
           # Riutilizza le immagini già in cache locale del runner quando possibile
           TESTCONTAINERS_REUSE_ENABLE: 'false'
@@ -314,6 +378,7 @@ jobs:
       - name: Build OCI image (Dockerfile)
         run: |
           docker build --build-arg SERVICE=${{ matrix.service }} \
+                       --build-arg REVISION="${VERSION}" \
                        -t "${IMAGE_PREFIX}/${{ matrix.service }}:${VERSION}" .
 
       - name: Image built (verify only)

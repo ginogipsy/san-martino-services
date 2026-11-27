@@ -11,12 +11,12 @@
 
 Due workflow in `.github/workflows/`:
 
-| File | Scopo |
-|---|---|
-| `ci-cd.yml` | build, test, immagini OCI, publish su GHCR, docs OpenAPI |
-| `release.yml` | Tag, GitHub Release, Version Bump (Maven) |
-| `deploy.yml` | Pubblicazione manuale/automatica delle immagini su registry |
-| `qodana_code_quality.yml` | analisi statica JetBrains Qodana |
+| File               | Scopo                                                                  |
+|--------------------|------------------------------------------------------------------------|
+| `ci-cd.yml`        | build, test, immagini OCI, publish su GHCR, docs OpenAPI               |
+| `release.yml`      | Tag, GitHub Release, Version Bump (Maven)                              |
+| `deploy.yml`       | Pubblicazione manuale/automatica delle immagini su registry            |
+| `code-quality.yml` | analisi statica gratuita SpotBugs + PMD su JDK 25 (zero token esterni) |
 
 ## Allineamento a git flow
 
@@ -38,7 +38,7 @@ feature/*  ──PR──►  develop  ──►  release/*  ──PR──►  
 
 ## Job 1 — Build & Test
 
-Reactor completo su JDK 26 (`temurin`), `./mvnw clean verify`.
+Reactor completo su **JDK 25 LTS** (`temurin`), `./mvnw clean verify`.
 
 **Vault è un requisito hard dei test.** Ogni `application.yaml` dichiara `spring.config.import: vault://` *non opzionale*, e i datasource usano placeholder (`${EVENTS_DB_URL}`, …) risolti dai secret KV. Il job riusa i servizi `vault` e `vault-init` del `docker-compose.yml` del repo — unica fonte di verità, zero duplicazione:
 
@@ -62,16 +62,18 @@ Tre scelte deliberate:
 
 - **`actions/cache` esplicita** invece di `cache: maven` di `setup-java`, per controllare la chiave.
 - **`hashFiles` su tutti i pom**: reactor unico → cache unica. Un cambio di dipendenza in un solo modulo invalida correttamente la cache condivisa; `restore-keys` recupera comunque la quasi totalità degli artifact.
-- **`actions/cache/restore` (read-only) nei job matrice**: sei job paralleli che scrivono la stessa chiave si sovrascriverebbero a vicenda. La cache la popola **solo** `build-test`.
+- **`actions/cache/restore` (read-only) nei job matrice**: sette job paralleli che scrivono la stessa chiave si
+  sovrascriverebbero a vicenda. La cache la popola **solo** `build-test`.
 
 Uno step finale rimuove `~/.m2/repository/com/ginogipsy` prima del salvataggio: impedisce che un artifact del progetto in cache mascheri una rottura reale in una run futura.
 
 ## Job 2 — Immagini OCI
 
-Matrice di 6 servizi, `fail-fast: false`. Un solo `Dockerfile`, nella radice, per tutti e sei:
+Matrice di **7 servizi** (`events-service`, `stands-service`, `auth-service`, `gateway`, `saga-orchestrator`,
+`notifications-service`, `audit-service`), `fail-fast: false`. Un solo `Dockerfile`, nella radice, per tutti e sette:
 
 ```bash
-docker build --build-arg SERVICE=<service> -t ghcr.io/ginogipsy/sanmartino/<service>:<versione> .
+docker build --build-arg SERVICE=<service> --build-arg REVISION=<versione> -t ghcr.io/ginogipsy/sanmartino/<service>:<versione> .
 ```
 
 Il context è la radice del repo perché Maven ha bisogno del parent pom e di `common-observability`. Dentro:
@@ -89,25 +91,36 @@ Con la migrazione al task #045, il monorepo è standardizzato su **Java 25 (LTS)
 
 ## Job Release
 
-**La versione è determinata dallo Smart Versioning**:
-1. **Branch Name**: Estrae la versione (formato `X.Y.Z`) dalla fine del nome del branch sorgente (es. `release/1.2.0`).
-2. **PR Labels**: Cerca le etichette `major` o `minor` nella Pull Request mergiata.
-3. **Default**: Usa la versione attuale del `pom.xml`.
+**La versione è determinata dallo Smart Versioning** (risolta in `ci-cd.yml` e usata in modo coerente per JAR, immagini
+Docker e tag Git):
 
-A valle del tag, il bot aggiorna `develop` (back-merge) incrementando la patch via `mvn versions:set`.
+1. **Branch Name**: Estrae la versione (formato `X.Y.Z`) dal branch sorgente `release/X.Y.Z` o `hotfix/X.Y.Z` (anche con
+   prefisso `v`).
+2. **PR Labels**: Cerca le etichette `major` o `minor` nella Pull Request mergiata.
+3. **Default**: Usa `<revision>` del `pom.xml` (avanzando automaticamente alla patch libera successiva se il tag esiste
+   già).
+
+A valle del tag e della GitHub Release, il bot aggiorna `develop` incrementando `<revision>` alla patch successiva
+tramite `mvn versions:set-property`. È inoltre possibile avviare manualmente una release da GitHub Actions UI
+(`workflow_dispatch`).
 
 ## Job Deploy (Il "Terzo Pallino")
 
 La pubblicazione delle immagini segue una logica ibrida per massimizzare il controllo e la velocità:
 
-1. **Continuous Deployment (Master/Tags)**: Al push su `master` o alla creazione di un tag `v*`, il sistema pubblica le immagini automaticamente. Il tag Docker sarà `latest` per master e `X.Y.Z` per i tag.
-2. **Manual Approval (Altri branch)**: Su `develop` o `feature/*`, la pipeline si ferma al job `gate`. È necessario un intervento umano:
+1. **Continuous Deployment (Master/Tags)**: Al push su `master` o alla creazione di un tag `v*`, il sistema pubblica le
+   immagini automaticamente su GHCR (o registry custom se configurato). Il tag mobile sarà `latest` per `master` e
+   `X.Y.Z` per i tag.
+2. **Manual Approval (Altri branch)**: Su `develop`, `release/*` o `hotfix/*`, la pipeline si ferma al job `gate`. È
+   necessario un intervento umano:
    - Cliccare su **"Review deployments"** nell'interfaccia Actions.
-   - Fornire l'**Approve** per l'environment `nexus`.
-   - Una volta approvato, l'immagine viene pubblicata con il **nome del branch** (es. `feature-008-permessi`).
+   - Fornire l'**Approve** per l'environment `san-martino-registry`.
+   - Una volta approvato, l'immagine viene pubblicata con il **nome normalizzato del branch** (es. `develop`).
 
 > [!CAUTION]
-> **Setup Obbligatorio**: L'approvazione manuale richiede la presenza dell'environment **`nexus`** in *Settings -> Environments*. Deve avere una regola di *Required reviewers* configurata, altrimenti il deploy non sarà manuale ma partirà a ogni push.
+> **Setup Obbligatorio**: L'approvazione manuale richiede la presenza dell'environment **`san-martino-registry`** in
+*Settings -> Environments* con una regola di *Required reviewers* configurata, altrimenti lo step di verifica bloccherà
+il job segnalando l'assenza di approvazione umana.
 
 ## Job 3 — Docs OpenAPI
 
@@ -134,17 +147,18 @@ Doppia protezione contro la build ricorsiva innescata dal commit del bot:
 1. `docs/**` **non** è nei `paths` di trigger → un commit di sole docs non riattiva il workflow.
 2. Il messaggio di commit contiene `[skip ci]`.
 
-## Job Qodana
+## Analisi Statica Gratuita (`code-quality.yml`)
 
-Esegue un bootstrap prima dell'analisi:
+Esegue su JDK 25 (`temurin`) l'analisi statica gratuita tramite **SpotBugs** (`spotbugs-maven-plugin`) e **PMD**
+(`maven-pmd-plugin`) senza necessità di alcun token o servizio esterno:
 
-```yaml
-bootstrap: ./mvnw -B -ntp generate-sources
+```bash
+./mvnw test-compile pmd:pmd spotbugs:spotbugs
 ```
 
-Necessario: i controller implementano le interfacce prodotte da `openapi-generator`, che `.gitignore` esclude (`**/generated-sources/openapi/`). Senza questo step Qodana non risolve quei simboli e riporta centinaia di falsi positivi.
-
-Richiede il secret **`QODANA_TOKEN`** nelle repository secrets.
+Le classi generate da `openapi-generator` (`**/api/generated/**`) sono escluse tramite configurazione in `pom.xml` e
+`config/spotbugs-exclude.xml`. Il riepilogo per modulo viene pubblicato nel Job Summary di GitHub Actions e i report
+completi (`pmd.html`, `spotbugsXml.xml`, `spotbugsSarif.json`) vengono caricati come artifact.
 
 ## Riprodurre la CI in locale
 

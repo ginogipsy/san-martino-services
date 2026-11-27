@@ -33,7 +33,7 @@
     </modules>
 
     <properties>
-        <revision>2.0.0</revision>
+        <revision>2.1.0</revision>
         <java.version>25</java.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
@@ -46,6 +46,8 @@
         <spring-cloud.version>2025.1.2</spring-cloud.version>
         <spring-boot.version>4.0.6</spring-boot.version>
         <datasource-micrometer.version>2.2.0</datasource-micrometer.version>
+        <pmd-plugin.version>3.28.0</pmd-plugin.version>
+        <spotbugs-plugin.version>4.10.5.0</spotbugs-plugin.version>
 
         <!-- Nome delle immagini OCI: lo usano Dockerfile e workflow (docker.image.prefix) -->
         <docker.image.registry>ghcr.io</docker.image.registry>
@@ -143,6 +145,34 @@
                                 <BP_JVM_VERSION>${java.version}</BP_JVM_VERSION>
                             </env>
                         </image>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-pmd-plugin</artifactId>
+                    <version>${pmd-plugin.version}</version>
+                    <configuration>
+                        <targetJdk>${java.version}</targetJdk>
+                        <linkXRef>false</linkXRef>
+                        <excludes>
+                            <exclude>**/api/generated/**</exclude>
+                            <exclude>**/generated/**</exclude>
+                        </excludes>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>${spotbugs-plugin.version}</version>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>Medium</threshold>
+                        <xmlOutput>true</xmlOutput>
+                        <sarifOutput>true</sarifOutput>
+                        <excludeFilterFile>${maven.multiModuleProjectDirectory}/config/spotbugs-exclude.xml
+                        </excludeFilterFile>
                     </configuration>
                 </plugin>
             </plugins>
