@@ -832,6 +832,175 @@ class StandSearchServiceTest {
         assertThat(afterCancelOrder2.activeOrdersCount()).isEqualTo(0);
         assertThat(piatto2.getAvailablePlates()).isEqualTo(30);
     }
+
+    @Test
+    void multiEventStandsMenusAndCrossEditionReviewContinuity() {
+        UUID event2026 = UUID.fromString("11111111-1111-1111-1111-000000002026");
+        UUID event2025 = UUID.fromString("11111111-1111-1111-1111-000000002025");
+        UUID event2024 = UUID.fromString("11111111-1111-1111-1111-000000002024");
+
+        StandEntity ledZeppelin = new StandEntity(
+                UUID.randomUUID(),
+                1,
+                "Led Zeppelin",
+                "Descrizione 2026",
+                "Description 2026",
+                2014,
+                41.5822,
+                13.5775
+        );
+        ledZeppelin.addParticipation(new StandEventParticipationEntity(
+                UUID.randomUUID(),
+                event2026,
+                1,
+                "Descrizione 2026",
+                "Description 2026",
+                41.5822,
+                13.5775
+        ));
+        ledZeppelin.addParticipation(new StandEventParticipationEntity(
+                UUID.randomUUID(),
+                event2025,
+                1,
+                "Edizione 2025 Decennale",
+                "2025 10th Anniversary",
+                41.5822,
+                13.5775
+        ));
+
+        // Piatto condiviso tra 2025 e 2026 (stesso canonicalItemId)
+        UUID castagne2026Id = UUID.randomUUID();
+        UUID castagne2025Id = UUID.randomUUID();
+        MenuItemEntity castagne2026 = new MenuItemEntity(
+                castagne2026Id,
+                event2026,
+                castagne2026Id,
+                "Castagne arrostite",
+                "Caldarroste 2026",
+                "Roasted chestnuts 2026",
+                80,
+                MenuKind.FOOD,
+                List.of("castagne")
+        );
+        MenuItemEntity castagne2025 = new MenuItemEntity(
+                castagne2025Id,
+                event2025,
+                castagne2026Id, // stesso canonicalItemId
+                "Castagne arrostite",
+                "Caldarroste 2025",
+                "Roasted chestnuts 2025",
+                0,
+                MenuKind.FOOD,
+                List.of("castagne")
+        );
+
+        // Vino condiviso tra 2025 e 2026
+        UUID vino2026Id = UUID.randomUUID();
+        UUID vino2025Id = UUID.randomUUID();
+        MenuItemEntity vino2026 = new MenuItemEntity(
+                vino2026Id,
+                event2026,
+                vino2026Id,
+                "Vino rosso novello",
+                "Novello 2026",
+                "New wine 2026",
+                100,
+                MenuKind.DRINK,
+                List.of("vino")
+        );
+        MenuItemEntity vino2025 = new MenuItemEntity(
+                vino2025Id,
+                event2025,
+                vino2026Id,
+                "Vino rosso novello",
+                "Novello 2025",
+                "New wine 2025",
+                0,
+                MenuKind.DRINK,
+                List.of("vino")
+        );
+
+        // Piatto esclusivo del 2025
+        UUID polenta2025Id = UUID.randomUUID();
+        MenuItemEntity polenta2025 = new MenuItemEntity(
+                polenta2025Id,
+                event2025,
+                polenta2025Id,
+                "Polenta con spuntature",
+                "Speciale 2025",
+                "2025 Special",
+                0,
+                MenuKind.FOOD,
+                List.of("polenta")
+        );
+
+        ledZeppelin.addMenuItem(castagne2026);
+        ledZeppelin.addMenuItem(vino2026);
+        ledZeppelin.addMenuItem(castagne2025);
+        ledZeppelin.addMenuItem(vino2025);
+        ledZeppelin.addMenuItem(polenta2025);
+
+        when(repository.findAllByOrderByNumberAsc()).thenReturn(List.of(ledZeppelin));
+        when(repository.findById(ledZeppelin.getId())).thenReturn(Optional.of(ledZeppelin));
+
+        // 1. Consultazione per edizione: 2026 restituisce solo i 2 item del 2026, 2025 restituisce i 3 item del 2025,
+        //    2024 non include la cantina se includeNonParticipating=false
+        StandEntity stand2026 = service.findById(ledZeppelin.getId(), event2026);
+        assertThat(stand2026.getDescriptionIt()).isEqualTo("Descrizione 2026");
+        assertThat(stand2026.getMenuItems()).extracting(MenuItemEntity::getName)
+                .containsExactlyInAnyOrder("Castagne arrostite", "Vino rosso novello");
+
+        StandEntity stand2025 = service.findById(ledZeppelin.getId(), event2025);
+        assertThat(stand2025.getDescriptionIt()).isEqualTo("Edizione 2025 Decennale");
+        assertThat(stand2025.getMenuItems()).extracting(MenuItemEntity::getName)
+                .containsExactlyInAnyOrder("Castagne arrostite", "Vino rosso novello", "Polenta con spuntature");
+
+        assertThat(service.findAll(event2024, false)).isEmpty();
+        assertThat(service.findAll(event2024, true)).hasSize(1);
+
+        // 2. Continuità delle recensioni tra edizioni per lo stesso piatto/vino:
+        //    interrogando le recensioni per castagne2026Id (o castagne2025Id), vengono aggregate entrambe!
+        FestivalReviewEntity rev2025 = new FestivalReviewEntity(
+                UUID.randomUUID(),
+                ReviewTargetType.MENU_ITEM,
+                castagne2025Id,
+                ledZeppelin.getId(),
+                "Castagne arrostite",
+                "u-2025",
+                "Marco_2025",
+                5,
+                "Ottime nel 2025!",
+                ReviewStatus.APPROVED,
+                Instant.now().minusSeconds(86400)
+        );
+        FestivalReviewEntity rev2026 = new FestivalReviewEntity(
+                UUID.randomUUID(),
+                ReviewTargetType.MENU_ITEM,
+                castagne2026Id,
+                ledZeppelin.getId(),
+                "Castagne arrostite",
+                "u-2026",
+                "Elena_2026",
+                5,
+                "Ottime anche nel 2026!",
+                ReviewStatus.APPROVED,
+                Instant.now()
+        );
+        when(reviewRepository.findFilteredByTargetIds(
+                org.mockito.ArgumentMatchers.eq(ReviewTargetType.MENU_ITEM),
+                org.mockito.ArgumentMatchers.argThat(ids -> ids != null && ids.containsAll(List.of(castagne2026Id, castagne2025Id))),
+                org.mockito.ArgumentMatchers.eq(ReviewStatus.APPROVED)
+        )).thenReturn(List.of(rev2026, rev2025));
+
+        List<FestivalReviewEntity> castagneReviewsFrom2026 =
+                service.listReviews(ReviewTargetType.MENU_ITEM, castagne2026Id, ReviewStatus.APPROVED);
+        assertThat(castagneReviewsFrom2026).hasSize(2);
+
+        List<FestivalReviewEntity> castagneReviewsFrom2025 =
+                service.listReviews(ReviewTargetType.MENU_ITEM, castagne2025Id, ReviewStatus.APPROVED);
+        assertThat(castagneReviewsFrom2025).hasSize(2);
+    }
 }
+
 
 

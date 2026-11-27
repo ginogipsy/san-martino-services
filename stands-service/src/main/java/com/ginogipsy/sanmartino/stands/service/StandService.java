@@ -82,6 +82,12 @@ public class StandService {
         this.auditUserResolver = auditUserResolver;
     }
 
+    public static final UUID DEFAULT_EVENT_ID = MenuItemEntity.DEFAULT_EVENT_ID;
+
+    public static UUID resolveEventId(UUID eventId) {
+        return eventId != null ? eventId : DEFAULT_EVENT_ID;
+    }
+
     /**
      * Calcola una penalità (-20..0 punti) in base alla lunghezza della coda ordini attiva
      * sulla pulsantiera della cantina (Step 6 del motore di ricerca), premiando a parità di piatto
@@ -94,25 +100,148 @@ public class StandService {
         return -Math.min(20, (activeOrdersCount - 2) * 3);
     }
 
+    static boolean participatesInEvent(StandEntity stand, UUID targetEventId) {
+        UUID resolved = resolveEventId(targetEventId);
+        if (stand.getParticipations() == null || stand.getParticipations().isEmpty()) {
+            return DEFAULT_EVENT_ID.equals(resolved);
+        }
+        return stand.getParticipations().stream()
+                .anyMatch(p -> resolved.equals(p.getEventId()));
+    }
+
+    static StandEntity projectStandForEvent(StandEntity source, UUID eventId) {
+        UUID targetEventId = resolveEventId(eventId);
+        StandEventParticipationEntity participation = source.getParticipations() == null
+                ? null
+                : source.getParticipations().stream()
+                .filter(p -> targetEventId.equals(p.getEventId()))
+                .findFirst()
+                .orElse(null);
+
+        Integer number = participation != null ? participation.getNumber() : source.getNumber();
+        String descIt = participation != null ? participation.getDescriptionIt() : source.getDescriptionIt();
+        String descEn = participation != null ? participation.getDescriptionEn() : source.getDescriptionEn();
+        Double lat = participation != null ? participation.getLatitude() : source.getLatitude();
+        Double lng = participation != null ? participation.getLongitude() : source.getLongitude();
+
+        StandEntity view = new StandEntity(
+                source.getId(),
+                number,
+                source.getName(),
+                descIt,
+                descEn,
+                source.getFirstParticipationYear(),
+                lat,
+                lng
+        );
+        view.setActiveEventId(targetEventId);
+
+        if (source.getOwners() != null) {
+            for (StandOwnerEntity owner : source.getOwners()) {
+                StandOwnerEntity copyOwner = new StandOwnerEntity(
+                        owner.getId(),
+                        owner.getFirstName(),
+                        owner.getLastName(),
+                        owner.getEmail(),
+                        owner.getPhone(),
+                        owner.getRole()
+                );
+                view.addOwner(copyOwner);
+            }
+        }
+
+        if (source.getParticipations() != null && !source.getParticipations().isEmpty()) {
+            for (StandEventParticipationEntity p : source.getParticipations()) {
+                view.addParticipation(new StandEventParticipationEntity(
+                        p.getId(),
+                        p.getEventId(),
+                        p.getNumber(),
+                        p.getDescriptionIt(),
+                        p.getDescriptionEn(),
+                        p.getLatitude(),
+                        p.getLongitude()
+                ));
+            }
+        } else {
+            view.addParticipation(new StandEventParticipationEntity(
+                    source.getId(),
+                    DEFAULT_EVENT_ID,
+                    source.getNumber(),
+                    source.getDescriptionIt(),
+                    source.getDescriptionEn(),
+                    source.getLatitude(),
+                    source.getLongitude()
+            ));
+        }
+
+        if (source.getMenuItems() != null) {
+            for (MenuItemEntity item : source.getMenuItems()) {
+                UUID itemEventId = resolveEventId(item.getEventId());
+                if (targetEventId.equals(itemEventId)) {
+                    MenuItemEntity copyItem = new MenuItemEntity(
+                            item.getId(),
+                            itemEventId,
+                            item.getCanonicalItemId(),
+                            item.getName(),
+                            item.getDescriptionIt(),
+                            item.getDescriptionEn(),
+                            item.getAvailablePlates(),
+                            item.getKind(),
+                            item.getKeywords()
+                    );
+                    view.addMenuItem(copyItem);
+                }
+            }
+        }
+        return view;
+    }
+
     @Transactional(readOnly = true)
     @Cacheable(StandsConfig.CACHE_STANDS_LIST)
     public List<StandEntity> findAll() {
+        return findAll(DEFAULT_EVENT_ID, false);
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(value = StandsConfig.CACHE_STANDS_LIST, key = "(#eventId != null ? #eventId.toString() : '2026') + ':' + #includeNonParticipating")
+    public List<StandEntity> findAll(UUID eventId, boolean includeNonParticipating) {
+        UUID targetEventId = resolveEventId(eventId);
         List<StandEntity> stands = repository.findAllByOrderByNumberAsc();
+        List<StandEntity> projected = new java.util.ArrayList<>();
         for (StandEntity stand : stands) {
-            stand.getOwners().size();
-            stand.getMenuItems().forEach(item -> item.getKeywords().size());
+            materializeStandRelations(stand);
+            if (!includeNonParticipating && !participatesInEvent(stand, targetEventId)) {
+                continue;
+            }
+            projected.add(projectStandForEvent(stand, targetEventId));
         }
-        return stands;
+        projected.sort(java.util.Comparator.comparingInt(StandEntity::getNumber));
+        return projected;
     }
 
     @Transactional(readOnly = true)
     @Cacheable(value = StandsConfig.CACHE_STAND_DETAIL, key = "#id")
     public StandEntity findById(UUID id) {
+        return findById(id, null);
+    }
+
+    @Transactional(readOnly = true)
+    @Cacheable(value = StandsConfig.CACHE_STAND_DETAIL, key = "#id.toString() + ':' + (#eventId != null ? #eventId.toString() : '2026')")
+    public StandEntity findById(UUID id, UUID eventId) {
+        StandEntity stand = loadManagedStand(id);
+        return projectStandForEvent(stand, resolveEventId(eventId));
+    }
+
+    private StandEntity loadManagedStand(UUID id) {
         StandEntity stand = repository.findById(id).orElseThrow(() -> new StandNotFoundException(id));
-        // Materialize lazy collections so the mapper can read them outside the session
-        stand.getOwners().size();
-        stand.getMenuItems().forEach(item -> item.getKeywords().size());
+        materializeStandRelations(stand);
         return stand;
+    }
+
+    private void materializeStandRelations(StandEntity stand) {
+        stand.getOwners().size();
+        stand.getParticipations().size();
+        stand.getMenuItems().forEach(item -> item.getKeywords().size());
     }
 
     @Transactional
@@ -127,8 +256,23 @@ public class StandService {
             resourceId = "#result?.id?.toString()"
     )
     public StandEntity create(StandEntity stand) {
-        stand.setId(UUID.randomUUID());
-        return repository.save(stand);
+        UUID standId = UUID.randomUUID();
+        stand.setId(standId);
+        UUID targetEventId = resolveEventId(stand.getActiveEventId());
+        stand.setActiveEventId(targetEventId);
+        StandEventParticipationEntity participation = new StandEventParticipationEntity(
+                UUID.randomUUID(),
+                targetEventId,
+                stand.getNumber(),
+                stand.getDescriptionIt(),
+                stand.getDescriptionEn(),
+                stand.getLatitude(),
+                stand.getLongitude()
+        );
+        stand.addParticipation(participation);
+        StandEntity saved = repository.save(stand);
+        materializeStandRelations(saved);
+        return projectStandForEvent(saved, targetEventId);
     }
 
     @Transactional
@@ -143,23 +287,107 @@ public class StandService {
             resourceId = "#id?.toString()"
     )
     public StandEntity update(UUID id, StandEntity update) {
-        StandEntity current = findById(id);
-        current.setNumber(update.getNumber());
+        return update(id, update, update.getActiveEventId());
+    }
+
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
+    @Auditable(
+            action = "STAND:UPDATE",
+            description = "'Modifica cantina: ' + #update.name + ' (#' + #update.number + ') per evento ' + #eventId",
+            resourceId = "#id?.toString()"
+    )
+    public StandEntity update(UUID id, StandEntity update, UUID eventId) {
+        StandEntity current = loadManagedStand(id);
+        UUID targetEventId = resolveEventId(eventId != null ? eventId : update.getActiveEventId());
+
         current.setName(update.getName());
-        current.setDescriptionIt(update.getDescriptionIt());
-        current.setDescriptionEn(update.getDescriptionEn());
         current.setFirstParticipationYear(update.getFirstParticipationYear());
-        current.setLatitude(update.getLatitude());
-        current.setLongitude(update.getLongitude());
-        return current;
+
+        if (DEFAULT_EVENT_ID.equals(targetEventId) || current.getParticipations().isEmpty()) {
+            current.setNumber(update.getNumber());
+            current.setDescriptionIt(update.getDescriptionIt());
+            current.setDescriptionEn(update.getDescriptionEn());
+            current.setLatitude(update.getLatitude());
+            current.setLongitude(update.getLongitude());
+        }
+
+        StandEventParticipationEntity participation = current.getParticipations().stream()
+                .filter(p -> targetEventId.equals(p.getEventId()))
+                .findFirst()
+                .orElse(null);
+
+        if (participation != null) {
+            participation.setNumber(update.getNumber());
+            participation.setDescriptionIt(update.getDescriptionIt());
+            participation.setDescriptionEn(update.getDescriptionEn());
+            participation.setLatitude(update.getLatitude());
+            participation.setLongitude(update.getLongitude());
+        } else {
+            current.addParticipation(new StandEventParticipationEntity(
+                    UUID.randomUUID(),
+                    targetEventId,
+                    update.getNumber(),
+                    update.getDescriptionIt(),
+                    update.getDescriptionEn(),
+                    update.getLatitude(),
+                    update.getLongitude()
+            ));
+        }
+
+        return projectStandForEvent(current, targetEventId);
+    }
+
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
+    @Auditable(
+            action = "STAND:EDITION_UPSERT",
+            description = "'Iscrizione/aggiornamento cantina ' + #id + ' all\\'edizione ' + #eventId",
+            resourceId = "#id?.toString()"
+    )
+    public StandEntity upsertEditionParticipation(UUID id, UUID eventId, StandEntity update) {
+        return update(id, update, eventId);
+    }
+
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
+    @Auditable(
+            action = "STAND:EDITION_DELETE",
+            description = "'Rimozione partecipazione cantina ' + #id + ' dall\\'edizione ' + #eventId",
+            resourceId = "#id?.toString()"
+    )
+    public void deleteEditionParticipation(UUID id, UUID eventId) {
+        StandEntity current = loadManagedStand(id);
+        UUID targetEventId = resolveEventId(eventId);
+        current.getParticipations().removeIf(p -> targetEventId.equals(p.getEventId()));
+        current.getMenuItems().removeIf(item -> targetEventId.equals(resolveEventId(item.getEventId())));
     }
 
     @Transactional(readOnly = true)
     public List<MenuItemEntity> listMenuItems(UUID standId, MenuKind kindFilter) {
-        StandEntity stand = findById(standId);
-        List<MenuItemEntity> items = stand.getMenuItems();
-        if (kindFilter == null) return items;
-        return items.stream().filter(it -> it.getKind() == kindFilter).toList();
+        return listMenuItems(standId, kindFilter, DEFAULT_EVENT_ID, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MenuItemEntity> listMenuItems(UUID standId, MenuKind kindFilter, UUID eventId, boolean allEditions) {
+        StandEntity stand = loadManagedStand(standId);
+        UUID targetEventId = resolveEventId(eventId);
+        return stand.getMenuItems().stream()
+                .filter(it -> allEditions || targetEventId.equals(resolveEventId(it.getEventId())))
+                .filter(it -> kindFilter == null || it.getKind() == kindFilter)
+                .toList();
     }
 
     @Transactional
@@ -192,9 +420,58 @@ public class StandService {
             resourceId = "#standId?.toString()"
     )
     public MenuItemEntity addMenuItem(UUID standId, MenuItemEntity item) {
-        StandEntity stand = findById(standId);
-        item.setId(UUID.randomUUID());
+        return addMenuItem(standId, item, item.getEventId());
+    }
+
+    @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = StandsConfig.CACHE_STANDS_LIST, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true),
+            @CacheEvict(value = StandsConfig.CACHE_STAND_ANALYTICS, allEntries = true)
+    })
+    @Auditable(
+            action = "STAND:MENU_ITEM_ADD",
+            description = "'Aggiunta piatto al menu: ' + #item.name + ' per cantina ' + #standId + ' (evento ' + #eventId + ')'",
+            resourceId = "#standId?.toString()"
+    )
+    public MenuItemEntity addMenuItem(UUID standId, MenuItemEntity item, UUID eventId) {
+        StandEntity stand = loadManagedStand(standId);
+        UUID newItemId = UUID.randomUUID();
+        UUID targetEventId = resolveEventId(eventId != null ? eventId : item.getEventId());
+        item.setEventId(targetEventId);
+
+        // Se canonicalItemId non è specificato esplicitamente, verifica se la cantina ha già proposto
+        // lo stesso piatto/vino (stesso nome normalizzato e stesso kind) in un'altra edizione per ereditarne le recensioni!
+        UUID resolvedCanonicalId = item.getCanonicalItemId();
+        if (resolvedCanonicalId == null) {
+            String normalizedNewName = normalizeText(item.getName());
+            resolvedCanonicalId = stand.getMenuItems().stream()
+                    .filter(existing -> existing.getKind() == item.getKind()
+                            && normalizeText(existing.getName()).equals(normalizedNewName))
+                    .map(MenuItemEntity::getCanonicalItemId)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(newItemId);
+        }
+        item.setId(newItemId);
+        item.setCanonicalItemId(resolvedCanonicalId);
         item.setKeywords(enrichKeywordsWithAutoSuggestions(item.getName(), item.getDescriptionIt(), item.getKeywords()));
+
+        // Garantisce che la cantina risulti partecipante all'edizione a cui viene aggiunto un piatto
+        boolean alreadyParticipates = stand.getParticipations().stream()
+                .anyMatch(p -> targetEventId.equals(p.getEventId()));
+        if (!alreadyParticipates) {
+            stand.addParticipation(new StandEventParticipationEntity(
+                    UUID.randomUUID(),
+                    targetEventId,
+                    stand.getNumber(),
+                    stand.getDescriptionIt(),
+                    stand.getDescriptionEn(),
+                    stand.getLatitude(),
+                    stand.getLongitude()
+            ));
+        }
+
         stand.addMenuItem(item);
         return item;
     }
@@ -211,7 +488,7 @@ public class StandService {
             resourceId = "#standId?.toString()"
     )
     public MenuItemEntity updateMenuItem(UUID standId, UUID itemId, MenuItemEntity update) {
-        StandEntity stand = findById(standId);
+        StandEntity stand = loadManagedStand(standId);
         MenuItemEntity current = stand.getMenuItems().stream()
                 .filter(it -> it.getId().equals(itemId))
                 .findFirst()
@@ -227,7 +504,7 @@ public class StandService {
 
     @Transactional(readOnly = true)
     public List<StandOwnerEntity> listOwners(UUID standId) {
-        return findById(standId).getOwners();
+        return loadManagedStand(standId).getOwners();
     }
 
     @Transactional
@@ -242,7 +519,7 @@ public class StandService {
             resourceId = "#standId?.toString()"
     )
     public void deleteMenuItem(UUID standId, UUID itemId) {
-        StandEntity stand = findById(standId);
+        StandEntity stand = loadManagedStand(standId);
         MenuItemEntity item = stand.getMenuItems().stream()
                 .filter(it -> it.getId().equals(itemId))
                 .findFirst()
@@ -256,7 +533,7 @@ public class StandService {
             @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true)
     })
     public StandOwnerEntity addOwner(UUID standId, StandOwnerEntity owner) {
-        StandEntity stand = findById(standId);
+        StandEntity stand = loadManagedStand(standId);
         owner.setId(UUID.randomUUID());
         stand.addOwner(owner);
         return owner;
@@ -293,7 +570,7 @@ public class StandService {
             @CacheEvict(value = StandsConfig.CACHE_STAND_DETAIL, allEntries = true)
     })
     public void deleteOwner(UUID standId, UUID ownerId) {
-        StandEntity stand = findById(standId);
+        StandEntity stand = loadManagedStand(standId);
         StandOwnerEntity owner = stand.getOwners().stream()
                 .filter(o -> o.getId().equals(ownerId))
                 .findFirst()
@@ -308,19 +585,9 @@ public class StandService {
 
     @Transactional
     public List<StandSearchHit> searchStands(String query, MenuKind kindFilter, boolean onlyAvailable) {
-        return searchStands(query, kindFilter, onlyAvailable, null, null);
+        return searchStands(query, kindFilter, onlyAvailable, null, null, DEFAULT_EVENT_ID);
     }
 
-    /**
-     * Ricerca intelligente cross-cantina su piatti, parole chiave (`keywords`),
-     * descrizioni IT/EN e anagrafica cantina, con:
-     * - normalizzazione accenti e rimozione stopword
-     * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
-     * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
-     * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto),
-     *   rating medio approvato (`festival_reviews`), vicinanza GPS opzionale e coda attiva pulsantiera.
-     * - salvataggio automatico della ricerca in `stand_search_logs` se la query normalizzata ha lunghezza >= 2.
-     */
     @Transactional
     public List<StandSearchHit> searchStands(
             String query,
@@ -329,19 +596,49 @@ public class StandService {
             Double userLat,
             Double userLng
     ) {
+        return searchStands(query, kindFilter, onlyAvailable, userLat, userLng, DEFAULT_EVENT_ID);
+    }
+
+    /**
+     * Ricerca intelligente cross-cantina su piatti, parole chiave (`keywords`),
+     * descrizioni IT/EN e anagrafica cantina, filtrata per edizione (`eventId`), con:
+     * - normalizzazione accenti e rimozione stopword
+     * - espansione sinonimi gastronomici (`CULINARY_SYNONYMS`)
+     * - tolleranza agli errori di battitura (distanza di Damerau-Levenshtein <= 1 o 2)
+     * - boost di disponibilità (`availablePlates > 0`), popolarità (click storici sul piatto),
+     *   rating medio approvato (`festival_reviews`, aggregato anche tra edizioni dello stesso piatto/vino),
+     *   vicinanza GPS opzionale e coda attiva pulsantiera.
+     * - salvataggio automatico della ricerca in `stand_search_logs` se la query normalizzata ha lunghezza >= 2.
+     */
+    @Transactional
+    public List<StandSearchHit> searchStands(
+            String query,
+            MenuKind kindFilter,
+            boolean onlyAvailable,
+            Double userLat,
+            Double userLng,
+            UUID eventId
+    ) {
+        UUID targetEventId = resolveEventId(eventId);
         List<StandEntity> allStands = repository.findAllByOrderByNumberAsc();
         List<String> tokens = tokenizeQuery(query);
         String fullNormalizedQuery = normalizeText(query);
 
-        Map<UUID, Long> itemClickCounts = loadMenuItemClickCounts();
-        Map<UUID, Double> itemApprovedRatings = loadApprovedMenuItemRatings();
-        Map<UUID, Integer> standActiveOrderCounts = loadActiveOrderCountsByStand();
+        Map<UUID, Long> itemClickCounts = loadMenuItemClickCounts(allStands);
+        Map<UUID, Double> itemApprovedRatings = loadApprovedMenuItemRatings(allStands);
+        Map<UUID, Integer> standActiveOrderCounts = DEFAULT_EVENT_ID.equals(targetEventId)
+                ? loadActiveOrderCountsByStand()
+                : Map.of();
 
         List<StandSearchHit> results = new java.util.ArrayList<>();
 
-        for (StandEntity stand : allStands) {
+        for (StandEntity rawStand : allStands) {
+            materializeStandRelations(rawStand);
+            if (!participatesInEvent(rawStand, targetEventId)) {
+                continue;
+            }
+            StandEntity stand = projectStandForEvent(rawStand, targetEventId);
             List<MenuItemEntity> menuItems = stand.getMenuItems();
-            menuItems.forEach(item -> item.getKeywords().size());
             int activeQueueCount = stand.getId() != null ? standActiveOrderCounts.getOrDefault(stand.getId(), 0) : 0;
             int waitTimePenalty = computeWaitTimePenalty(activeQueueCount);
 
@@ -400,6 +697,8 @@ public class StandService {
                     java.util.Comparator.comparingInt(StandSearchHit::score).reversed()
                             .thenComparingInt(hit -> hit.stand().getNumber())
             );
+        } else {
+            results.sort(java.util.Comparator.comparingInt(hit -> hit.stand().getNumber()));
         }
 
         recordSearchIfEligible(query, fullNormalizedQuery, kindFilter, onlyAvailable, results.size());
@@ -593,30 +892,125 @@ public class StandService {
         searchLogRepository.save(logEntity);
     }
 
-    private Map<UUID, Long> loadMenuItemClickCounts() {
+    private Map<UUID, Long> loadMenuItemClickCounts(List<StandEntity> allStands) {
         if (interactionEventRepository == null) {
             return Map.of();
         }
-        return interactionEventRepository.findAllMenuItemClickCounts().stream()
+        Map<UUID, Long> directClicks = interactionEventRepository.findAllMenuItemClickCounts().stream()
                 .filter(agg -> agg.getMenuItemId() != null)
                 .collect(Collectors.toMap(
                         StandInteractionEventRepository.MenuItemClickAggregation::getMenuItemId,
                         StandInteractionEventRepository.MenuItemClickAggregation::getClickCount,
                         Long::sum
                 ));
+        if (directClicks.isEmpty() || allStands == null || allStands.isEmpty()) {
+            return directClicks;
+        }
+        Map<UUID, java.util.Set<UUID>> siblingGroups = buildMenuItemSiblingGroups(allStands);
+        Map<UUID, Long> aggregated = new java.util.HashMap<>(directClicks);
+        for (Map.Entry<UUID, java.util.Set<UUID>> entry : siblingGroups.entrySet()) {
+            long sum = entry.getValue().stream()
+                    .mapToLong(id -> directClicks.getOrDefault(id, 0L))
+                    .sum();
+            if (sum > 0) {
+                aggregated.put(entry.getKey(), sum);
+            }
+        }
+        return aggregated;
     }
 
-    private Map<UUID, Double> loadApprovedMenuItemRatings() {
+    private Map<UUID, Double> loadApprovedMenuItemRatings(List<StandEntity> allStands) {
         if (reviewRepository == null) {
             return Map.of();
         }
-        return reviewRepository.findApprovedMenuItemRatings().stream()
+        List<FestivalReviewRepository.TargetRatingAggregation> rawAggs = reviewRepository.findApprovedMenuItemRatings();
+        Map<UUID, FestivalReviewRepository.TargetRatingAggregation> byTarget = rawAggs.stream()
                 .filter(agg -> agg.getTargetId() != null)
                 .collect(Collectors.toMap(
                         FestivalReviewRepository.TargetRatingAggregation::getTargetId,
-                        FestivalReviewRepository.TargetRatingAggregation::getAvgRating,
+                        agg -> agg,
                         (a, b) -> a
                 ));
+        if (byTarget.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Double> result = new java.util.HashMap<>();
+        byTarget.forEach((id, agg) -> result.put(id, agg.getAvgRating()));
+
+        if (allStands != null && !allStands.isEmpty()) {
+            Map<UUID, java.util.Set<UUID>> siblingGroups = buildMenuItemSiblingGroups(allStands);
+            for (Map.Entry<UUID, java.util.Set<UUID>> entry : siblingGroups.entrySet()) {
+                double weightedSum = 0.0;
+                long totalCount = 0L;
+                for (UUID siblingId : entry.getValue()) {
+                    FestivalReviewRepository.TargetRatingAggregation agg = byTarget.get(siblingId);
+                    if (agg != null && agg.getReviewCount() > 0) {
+                        weightedSum += agg.getAvgRating() * agg.getReviewCount();
+                        totalCount += agg.getReviewCount();
+                    }
+                }
+                if (totalCount > 0) {
+                    result.put(entry.getKey(), weightedSum / totalCount);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Raggruppa gli ID dei `MenuItemEntity` della stessa cantina che rappresentano lo stesso piatto o vino
+     * in edizioni diverse (stesso `canonicalItemId` oppure stesso `standId` + `kind` + `normalizeText(name)`),
+     * così le recensioni e le valutazioni medie di un piatto/vino si perpetuano tra un evento e l'altro.
+     */
+    private Map<UUID, java.util.Set<UUID>> buildMenuItemSiblingGroups(List<StandEntity> allStands) {
+        Map<UUID, java.util.Set<UUID>> siblingsByItemId = new java.util.HashMap<>();
+        for (StandEntity stand : allStands) {
+            if (stand.getMenuItems() == null) continue;
+            List<MenuItemEntity> items = stand.getMenuItems();
+            for (MenuItemEntity item : items) {
+                if (item.getId() == null) continue;
+                UUID canonical = item.getCanonicalItemId();
+                String normName = normalizeText(item.getName());
+                java.util.Set<UUID> group = new java.util.LinkedHashSet<>();
+                group.add(item.getId());
+                for (MenuItemEntity other : items) {
+                    if (other.getId() == null) continue;
+                    boolean sameCanonical = canonical != null && canonical.equals(other.getCanonicalItemId());
+                    boolean sameNameAndKind = item.getKind() == other.getKind()
+                            && !normName.isEmpty()
+                            && normName.equals(normalizeText(other.getName()));
+                    if (sameCanonical || sameNameAndKind) {
+                        group.add(other.getId());
+                    }
+                }
+                siblingsByItemId.put(item.getId(), group);
+            }
+        }
+        return siblingsByItemId;
+    }
+
+    private java.util.Set<UUID> resolveEquivalentMenuItemIds(UUID targetId) {
+        if (targetId == null) {
+            return java.util.Set.of();
+        }
+        List<StandEntity> allStands = repository.findAllByOrderByNumberAsc();
+        Map<UUID, java.util.Set<UUID>> siblingGroups = buildMenuItemSiblingGroups(allStands);
+        java.util.Set<UUID> group = siblingGroups.get(targetId);
+        if (group != null && !group.isEmpty()) {
+            return group;
+        }
+        // Fallback: se targetId è già un canonicalItemId riferito da altri piatti
+        java.util.Set<UUID> matchingCanonical = new java.util.LinkedHashSet<>();
+        matchingCanonical.add(targetId);
+        for (StandEntity stand : allStands) {
+            if (stand.getMenuItems() == null) continue;
+            for (MenuItemEntity item : stand.getMenuItems()) {
+                if (item.getId() != null && targetId.equals(item.getCanonicalItemId())) {
+                    matchingCanonical.add(item.getId());
+                }
+            }
+        }
+        return matchingCanonical;
     }
 
     private Map<UUID, Integer> loadActiveOrderCountsByStand() {
@@ -641,6 +1035,15 @@ public class StandService {
     ) {
         if (reviewRepository == null) {
             return List.of();
+        }
+        if (targetType == ReviewTargetType.MENU_ITEM && targetId != null) {
+            java.util.Set<UUID> siblingIds = resolveEquivalentMenuItemIds(targetId);
+            if (siblingIds.size() > 1) {
+                List<FestivalReviewEntity> multi = reviewRepository.findFilteredByTargetIds(targetType, siblingIds, status);
+                if (multi != null && !multi.isEmpty()) {
+                    return multi;
+                }
+            }
         }
         return reviewRepository.findFiltered(targetType, targetId, status);
     }
@@ -679,13 +1082,13 @@ public class StandService {
                 : null;
 
         if (targetType == ReviewTargetType.STAND) {
-            StandEntity stand = findById(targetId);
+            StandEntity stand = loadManagedStand(targetId);
             resolvedStandId = stand.getId();
             resolvedTargetName = "#" + stand.getNumber() + " — " + stand.getName();
         } else if (targetType == ReviewTargetType.MENU_ITEM) {
             if (resolvedStandId != null) {
                 final UUID standIdToLookup = resolvedStandId;
-                StandEntity stand = findById(standIdToLookup);
+                StandEntity stand = loadManagedStand(standIdToLookup);
                 MenuItemEntity item = stand.getMenuItems().stream()
                         .filter(it -> it.getId().equals(targetId))
                         .findFirst()

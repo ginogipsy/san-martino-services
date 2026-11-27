@@ -31,8 +31,23 @@ paths:
   /v1/stands:
     get:
       tags: [stands]
-      summary: Elenca tutte le cantine (versione summary)
+      summary: Elenca tutte le cantine (versione summary, filtrata opzionalmente per edizione/evento)
       operationId: listStands
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (es. 2026, 2025, 2024, 2018, 2014). Se omesso restituisce l'edizione corrente (2026).
+          schema:
+            type: string
+            format: uuid
+        - name: includeNonParticipating
+          in: query
+          required: false
+          description: Se true (usato dal pannello di amministrazione), elenca tutte le cantine anagrafiche anche se non ancora iscritte all'eventId selezionato.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: Lista di cantine (summary, senza owners/menu)
@@ -109,6 +124,13 @@ paths:
             format: double
             minimum: -180
             maximum: 180
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione su cui effettuare la ricerca (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Risultati della ricerca ordinati per punteggio di rilevanza decrescente
@@ -286,8 +308,16 @@ paths:
       - $ref: '#/components/parameters/StandId'
     get:
       tags: [stands]
-      summary: Dettaglio di una cantina (include owners e menu)
+      summary: Dettaglio di una cantina (include owners e menu dell'edizione selezionata)
       operationId: getStand
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Cantina trovata
@@ -299,8 +329,16 @@ paths:
           $ref: '#/components/responses/NotFound'
     put:
       tags: [stands]
-      summary: Aggiorna info base di una cantina
+      summary: Aggiorna info base di una cantina (e la partecipazione per l'eventId specificato)
       operationId: updateStand
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione su cui salvare numero, descrizione e coordinate
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -328,12 +366,50 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/stands/{id}/editions/{eventId}:
+    parameters:
+      - $ref: '#/components/parameters/StandId'
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      tags: [ stands ]
+      summary: Iscrive o aggiorna la partecipazione di una cantina a una specifica edizione/evento
+      operationId: upsertStandEditionParticipation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StandUpdate'
+      responses:
+        '200':
+          description: Partecipazione della cantina all'edizione registrata o aggiornata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StandDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [ stands ]
+      summary: Rimuove la partecipazione (e i relativi piatti di quell'anno) della cantina dall'edizione indicata
+      operationId: deleteStandEditionParticipation
+      responses:
+        '204':
+          description: Partecipazione all'edizione rimossa
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/stands/{id}/menu-items:
     parameters:
       - $ref: '#/components/parameters/StandId'
     get:
       tags: [menu]
-      summary: Lista del menu di una cantina
+      summary: Lista del menu di una cantina (per edizione o catalogo storico completo)
       operationId: listMenuItems
       parameters:
         - name: kind
@@ -341,9 +417,23 @@ paths:
           required: false
           schema:
             $ref: '#/components/schemas/MenuKind'
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione (default edizione corrente 2026)
+          schema:
+            type: string
+            format: uuid
+        - name: allEditions
+          in: query
+          required: false
+          description: Se true, restituisce il catalogo storico di tutti i piatti/vini proposti dalla cantina nelle varie edizioni
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
-          description: Menu della cantina (filtrato per kind se passato)
+          description: Menu della cantina (filtrato per kind ed eventId se passati)
           content:
             application/json:
               schema:
@@ -354,8 +444,16 @@ paths:
           $ref: '#/components/responses/NotFound'
     post:
       tags: [menu]
-      summary: Aggiunge un piatto o bevanda al menu
+      summary: Aggiunge un piatto o bevanda al menu dell'edizione selezionata
       operationId: addMenuItem
+      parameters:
+        - name: eventId
+          in: query
+          required: false
+          description: UUID dell'evento/edizione a cui associare il piatto/vino (può essere passato anche nel body)
+          schema:
+            type: string
+            format: uuid
       requestBody:
         required: true
         content:
@@ -798,6 +896,16 @@ components:
         id:
           type: string
           format: uuid
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione rappresentata
+        participatingEventIds:
+          type: array
+          description: Lista degli UUID delle edizioni a cui la cantina partecipa
+          items:
+            type: string
+            format: uuid
         number:
           type: integer
           description: Numero della cantina come stampato sui volantini (es. 1..58)
@@ -849,6 +957,10 @@ components:
       type: object
       required: [number, name, description, firstParticipationYear, latitude, longitude]
       properties:
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui iscrivere la nuova cantina (default edizione corrente 2026)
         number:
           type: integer
           minimum: 1
@@ -878,6 +990,9 @@ components:
       type: object
       required: [number, name, description, firstParticipationYear, latitude, longitude]
       properties:
+        eventId:
+          type: string
+          format: uuid
         number:
           type: integer
           minimum: 1
@@ -913,6 +1028,14 @@ components:
         standId:
           type: string
           format: uuid
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui appartiene questo piatto/vino
+        canonicalItemId:
+          type: string
+          format: uuid
+          description: UUID canonico del piatto/vino condiviso tra più edizioni per continuità storica delle recensioni
         name:
           type: string
         description:
@@ -932,6 +1055,14 @@ components:
       type: object
       required: [name, description, availablePlates, kind]
       properties:
+        eventId:
+          type: string
+          format: uuid
+          description: UUID dell'evento/edizione a cui appartiene il piatto/vino
+        canonicalItemId:
+          type: string
+          format: uuid
+          description: UUID canonico opzionale se si riutilizza un piatto/vino già proposto in altre edizioni
         name:
           type: string
           minLength: 1
